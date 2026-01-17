@@ -5,44 +5,39 @@ st.set_page_config(page_title="Bridging Brain v1.0", layout="wide")
 
 @st.cache_data
 def load_data():
-    # Load with basic settings to ensure the file opens
+    # Load and immediately force everything to string to kill that 'lower' error
     df = pd.read_csv("data.csv", quoting=3, on_bad_lines='skip', encoding_errors='ignore')
     df.columns = df.columns.str.strip()
-    # Force the entire spreadsheet to be strings (text) immediately
     return df.astype(str)
 
 try:
     df = load_data()
     st.title("🏦 Bridging Brain: Underwriting Assistant")
     
-    query = st.text_input("Describe the deal in plain English:", placeholder="e.g. Find me a lender for equitable charges")
+    # Text input and a physical button for ease of use
+    query = st.text_input("Describe the deal in plain English:")
+    search_button = st.button("🔍 Analyze Deal")
 
-    if query:
+    if query or search_button:
         q = query.lower()
         results = []
-
-        # The keywords our 'Brain' recognizes
+        
+        # Keywords for the brain to trigger on
         targets = ["equitable", "charge", "scotland", "semi", "mixed", "land", "probate", "hmo", "refurb"]
 
+        # Loop through data and score
         for idx, row in df.iterrows():
             score = 0
-            # We combine the row into one long string carefully to avoid the 'Series' error
-            row_text = " ".join(row.values).lower()
-
-            # Check for matches
-            matched_words = []
+            # Combine all row data into one searchable string safely
+            combined_text = " ".join(row.values).lower()
+            
             for t in targets:
-                if t in q and t in row_text:
+                if t in q and t in combined_text:
                     score += 25
-                    matched_words.append(t.title())
 
-            # Traffic Light Logic
-            if score >= 50:
-                color = "green"
-            elif score >= 25:
-                color = "orange"
-            else:
-                color = "red"
+            if score >= 50: color = "green"
+            elif score >= 25: color = "orange"
+            else: color = "red"
 
             if score > 0:
                 results.append({
@@ -62,22 +57,21 @@ try:
                 for r in [x for x in results if x['Color'] == 'green']:
                     with st.expander(f"⭐ {r['Lender']} ({r['Score']} pts)"):
                         st.write(f"📞 **Contact:** {r['Contact']}")
-                        st.write("---")
-                        st.write(r['Details'])
+                        st.json(r['Details']) # Clean way to see all data
 
             with med_col:
                 st.subheader("🟡 Possible")
                 for r in [x for x in results if x['Color'] == 'orange']:
                     with st.expander(f"{r['Lender']}"):
                         st.write(f"📞 **Contact:** {r['Contact']}")
-                        st.write(r['Details'])
+                        st.json(r['Details'])
 
             with low_col:
                 st.subheader("🔴 Low Probability")
                 for r in [x for x in results if x['Color'] == 'red']:
                     st.write(f"❌ {r['Lender']}")
         else:
-            st.warning("I couldn't find those specific terms. Try keywords like 'Equitable' or 'Scotland'.")
+            st.warning("No matches found. Try keywords like 'Equitable' or 'Scotland'.")
 
 except Exception as e:
     st.error(f"Technical Error: {e}")
