@@ -1,61 +1,67 @@
 import streamlit as st
+import sqlite3
 import pandas as pd
 
 st.set_page_config(page_title="Bridging Brain v1.0", layout="wide")
 
-@st.cache_data
-def load_data():
-    # Final 'Safe' Load
-    df = pd.read_csv("data.csv", on_bad_lines='skip', encoding_errors='ignore')
-    df.columns = df.columns.str.strip()
-    return df.fillna("Not Specified")
+# 1. Connect to the Database Claude created
+def load_db_data():
+    conn = sqlite3.connect('bridging_brain.db')
+    # We join the main lenders table with their LTV and Refurb criteria
+    query = """
+    SELECT l.name, l.bdm_name, l.bdm_phone, l.interest_rate_band, l.proc_fee,
+           ltv.resi_investment_1st, ltv.semi_commercial_1st,
+           refurb.additional_notes, l.end_comments
+    FROM lenders l
+    LEFT JOIN ltv_criteria ltv ON l.id = ltv.lender_id
+    LEFT JOIN refurb_criteria refurb ON l.id = refurb.lender_id
+    """
+    df = pd.read_sql_query(query, conn)
+    conn.close()
+    return df
 
 try:
-    df = load_data()
-    st.title("🏦 Bridging Brain: Underwriting Assistant")
+    df = load_db_data()
+    st.title("🏦 Bridging Brain: Professional Assistant")
     
-    query = st.text_input("Describe your deal:", placeholder="e.g. Find me a lender for equitable charges")
+    query = st.text_input("Describe the deal (e.g., Equitable charge semi-commercial):")
     
     if query:
         q = query.lower()
-        # Split your sentence into words
-        search_words = [w for w in q.split() if len(w) > 3] # Only look for words longer than 3 letters
+        search_terms = [w for w in q.split() if len(w) > 3]
         
-        green_list = []
-        orange_list = []
-
-        for idx, row in df.iterrows():
-            # Create one big string of all data in this row
-            row_str = " ".join(row.astype(str).values).lower()
+        results = []
+        for _, row in df.iterrows():
+            # Create a searchable string from all columns
+            row_content = " ".join(row.fillna('').astype(str).values).lower()
+            score = sum(1 for term in search_words if term in row_content)
             
-            # Count how many of your words appear in this row
-            match_count = sum(1 for word in search_words if word in row_str)
+            if score > 0:
+                results.append({"data": row, "score": score})
 
-            if match_count >= 2:
-                green_list.append(row)
-            elif match_count == 1:
-                orange_list.append(row)
-
-        # --- 3 COLUMN DISPLAY ---
+        # --- 3 COLUMN TRAFFIC LIGHTS ---
         col1, col2, col3 = st.columns(3)
-
+        
         with col1:
             st.success("### 🟢 High Appetite")
-            for r in green_list:
-                with st.expander(f"⭐ {r['Name of Lender']}"):
-                    st.write(f"📞 **Contact:** {r['Central number for new enquiries']}")
-                    st.write(r.to_dict())
+            # Logic: Matches 2+ keywords
+            for r in [x for x in results if x['score'] >= 2]:
+                with st.expander(f"⭐ {r['data']['name']}"):
+                    st.write(f"📞 BDM: {r['data']['bdm_name']} - {r['data']['bdm_phone']}")
+                    st.write(f"💰 Rate: {r['data']['interest_rate_band']}")
+                    st.write(f"📝 Notes: {r['data']['end_comments']}")
 
         with col2:
             st.warning("### 🟡 Possible")
-            for r in orange_list:
-                with st.expander(f"{r['Name of Lender']}"):
-                    st.write(f"📞 **Contact:** {r['Central number for new enquiries']}")
-                    st.write(r.to_dict())
+            # Logic: Matches 1 keyword
+            for r in [x for x in results if x['score'] == 1]:
+                with st.expander(f"{r['data']['name']}"):
+                    st.write(f"📞 Contact: {r['data']['bdm_name']}")
 
         with col3:
             st.error("### 🔴 Low Probability")
-            st.write("Lenders not matching key terms are excluded from this view.")
+            st.write("Lenders with 0 matches are hidden.")
 
 except Exception as e:
-    st.error(f"Error: {e}")
+    st.error(f"Database Error: {e}")
+    st.info("Make sure 'bridging_brain.db' is uploaded to the same folder as this app.")
