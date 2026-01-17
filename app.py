@@ -5,73 +5,57 @@ st.set_page_config(page_title="Bridging Brain v1.0", layout="wide")
 
 @st.cache_data
 def load_data():
-    # Load and immediately force everything to string to kill that 'lower' error
-    df = pd.read_csv("data.csv", quoting=3, on_bad_lines='skip', encoding_errors='ignore')
+    # Final 'Safe' Load
+    df = pd.read_csv("data.csv", on_bad_lines='skip', encoding_errors='ignore')
     df.columns = df.columns.str.strip()
-    return df.astype(str)
+    return df.fillna("Not Specified")
 
 try:
     df = load_data()
     st.title("🏦 Bridging Brain: Underwriting Assistant")
     
-    # Text input and a physical button for ease of use
-    query = st.text_input("Describe the deal in plain English:")
-    search_button = st.button("🔍 Analyze Deal")
-
-    if query or search_button:
+    query = st.text_input("Describe your deal:", placeholder="e.g. Find me a lender for equitable charges")
+    
+    if query:
         q = query.lower()
-        results = []
+        # Split your sentence into words
+        search_words = [w for w in q.split() if len(w) > 3] # Only look for words longer than 3 letters
         
-        # Keywords for the brain to trigger on
-        targets = ["equitable", "charge", "scotland", "semi", "mixed", "land", "probate", "hmo", "refurb"]
+        green_list = []
+        orange_list = []
 
-        # Loop through data and score
         for idx, row in df.iterrows():
-            score = 0
-            # Combine all row data into one searchable string safely
-            combined_text = " ".join(row.values).lower()
+            # Create one big string of all data in this row
+            row_str = " ".join(row.astype(str).values).lower()
             
-            for t in targets:
-                if t in q and t in combined_text:
-                    score += 25
+            # Count how many of your words appear in this row
+            match_count = sum(1 for word in search_words if word in row_str)
 
-            if score >= 50: color = "green"
-            elif score >= 25: color = "orange"
-            else: color = "red"
+            if match_count >= 2:
+                green_list.append(row)
+            elif match_count == 1:
+                orange_list.append(row)
 
-            if score > 0:
-                results.append({
-                    "Lender": row.get('Name of Lender', 'Unknown'),
-                    "Contact": row.get('Central number for new enquiries', 'N/A'),
-                    "Score": score,
-                    "Color": color,
-                    "Details": row.to_dict()
-                })
+        # --- 3 COLUMN DISPLAY ---
+        col1, col2, col3 = st.columns(3)
 
-        # --- THE 3-SECTION LAYOUT ---
-        if results:
-            high_col, med_col, low_col = st.columns(3)
+        with col1:
+            st.success("### 🟢 High Appetite")
+            for r in green_list:
+                with st.expander(f"⭐ {r['Name of Lender']}"):
+                    st.write(f"📞 **Contact:** {r['Central number for new enquiries']}")
+                    st.write(r.to_dict())
 
-            with high_col:
-                st.subheader("🟢 High Appetite")
-                for r in [x for x in results if x['Color'] == 'green']:
-                    with st.expander(f"⭐ {r['Lender']} ({r['Score']} pts)"):
-                        st.write(f"📞 **Contact:** {r['Contact']}")
-                        st.json(r['Details']) # Clean way to see all data
+        with col2:
+            st.warning("### 🟡 Possible")
+            for r in orange_list:
+                with st.expander(f"{r['Name of Lender']}"):
+                    st.write(f"📞 **Contact:** {r['Central number for new enquiries']}")
+                    st.write(r.to_dict())
 
-            with med_col:
-                st.subheader("🟡 Possible")
-                for r in [x for x in results if x['Color'] == 'orange']:
-                    with st.expander(f"{r['Lender']}"):
-                        st.write(f"📞 **Contact:** {r['Contact']}")
-                        st.json(r['Details'])
-
-            with low_col:
-                st.subheader("🔴 Low Probability")
-                for r in [x for x in results if x['Color'] == 'red']:
-                    st.write(f"❌ {r['Lender']}")
-        else:
-            st.warning("No matches found. Try keywords like 'Equitable' or 'Scotland'.")
+        with col3:
+            st.error("### 🔴 Low Probability")
+            st.write("Lenders not matching key terms are excluded from this view.")
 
 except Exception as e:
-    st.error(f"Technical Error: {e}")
+    st.error(f"Error: {e}")
