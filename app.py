@@ -5,9 +5,11 @@ st.set_page_config(page_title="Bridging Brain v1.0", layout="wide")
 
 @st.cache_data
 def load_data():
+    # Load with basic settings to ensure the file opens
     df = pd.read_csv("data.csv", quoting=3, on_bad_lines='skip', encoding_errors='ignore')
     df.columns = df.columns.str.strip()
-    return df
+    # Force the entire spreadsheet to be strings (text) immediately
+    return df.astype(str)
 
 try:
     df = load_data()
@@ -19,22 +21,20 @@ try:
         q = query.lower()
         results = []
 
-        # Keywords the 'Brain' looks for in your sentence
-        # We can add more to this list later!
-        targets = ["equitable", "charge", "scotland", "semi", "mixed", "land", "probate", "hmo"]
+        # The keywords our 'Brain' recognizes
+        targets = ["equitable", "charge", "scotland", "semi", "mixed", "land", "probate", "hmo", "refurb"]
 
         for idx, row in df.iterrows():
             score = 0
-            reasons = []
-            
-            # This line fixes the error you just saw: 
-            # It turns the whole row into one long string of text safely
-            row_content = " ".join(row.fillna('').astype(str).lower())
+            # We combine the row into one long string carefully to avoid the 'Series' error
+            row_text = " ".join(row.values).lower()
 
+            # Check for matches
+            matched_words = []
             for t in targets:
-                if t in q and t in row_content:
+                if t in q and t in row_text:
                     score += 25
-                    reasons.append(f"Matched {t.title()}")
+                    matched_words.append(t.title())
 
             # Traffic Light Logic
             if score >= 50:
@@ -50,7 +50,7 @@ try:
                     "Contact": row.get('Central number for new enquiries', 'N/A'),
                     "Score": score,
                     "Color": color,
-                    "Details": row.dropna().to_dict()
+                    "Details": row.to_dict()
                 })
 
         # --- THE 3-SECTION LAYOUT ---
@@ -60,24 +60,24 @@ try:
             with high_col:
                 st.subheader("🟢 High Appetite")
                 for r in [x for x in results if x['Color'] == 'green']:
-                    with st.expander(f"⭐ {r['Lender']}"):
-                        st.write(f"📞 {r['Contact']}")
+                    with st.expander(f"⭐ {r['Lender']} ({r['Score']} pts)"):
+                        st.write(f"📞 **Contact:** {r['Contact']}")
+                        st.write("---")
                         st.write(r['Details'])
 
             with med_col:
                 st.subheader("🟡 Possible")
                 for r in [x for x in results if x['Color'] == 'orange']:
                     with st.expander(f"{r['Lender']}"):
-                        st.write(f"📞 {r['Contact']}")
+                        st.write(f"📞 **Contact:** {r['Contact']}")
                         st.write(r['Details'])
 
             with low_col:
                 st.subheader("🔴 Low Probability")
-                # Showing just the names here to keep it clean
                 for r in [x for x in results if x['Color'] == 'red']:
-                    st.write(f"- {r['Lender']}")
+                    st.write(f"❌ {r['Lender']}")
         else:
-            st.warning("No lenders found. Try using different keywords like 'Equitable' or 'Land'.")
+            st.warning("I couldn't find those specific terms. Try keywords like 'Equitable' or 'Scotland'.")
 
 except Exception as e:
-    st.error(f"Error: {e}")
+    st.error(f"Technical Error: {e}")
