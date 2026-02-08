@@ -943,12 +943,24 @@ async def get_refiner_options(essentials: DealEssentials):
             'check': lambda l: 'yes' in str(l.get('do_you_lend_to_non_owner_occupiers', '')).lower()
         },
         
-        # DEAL REFINERS
+        # DEAL REFINERS - All 15 deal appetite scenarios
         'auction': {
             'category': 'deal',
             'icon': '🔨', 
             'label': 'Auction',
             'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside', '0')).strip() or 0) >= 2
+        },
+        'business_stabilisation': {
+            'category': 'deal',
+            'icon': '📊', 
+            'label': 'Business Stabilisation',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_1', '0')).strip() or 0) >= 2
+        },
+        'insolvency': {
+            'category': 'deal',
+            'icon': '⚠️', 
+            'label': 'Insolvency/Restructuring',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_2', '0')).strip() or 0) >= 2
         },
         'hmo': {
             'category': 'deal',
@@ -956,29 +968,71 @@ async def get_refiner_options(essentials: DealEssentials):
             'label': 'HMO Conversion',
             'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_3', '0')).strip() or 0) >= 2
         },
-        'probate': {
-            'category': 'deal',
-            'icon': '📜', 
-            'label': 'Probate',
-            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_9', '0')).strip() or 0) >= 2
-        },
         'comm_to_resi': {
             'category': 'deal',
             'icon': '🔄', 
             'label': 'Comm to Resi (PD)',
             'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_4', '0')).strip() or 0) >= 2
         },
-        'developer_exit': {
+        'airspace': {
             'category': 'deal',
             'icon': '🏗️', 
-            'label': 'Developer Exit',
-            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_12', '0')).strip() or 0) >= 2
+            'label': 'Airspace Development',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_5', '0')).strip() or 0) >= 2
+        },
+        'pre_planning': {
+            'category': 'deal',
+            'icon': '📋', 
+            'label': 'Pre-Planning Acquisition',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_6', '0')).strip() or 0) >= 2
+        },
+        'subsidence': {
+            'category': 'deal',
+            'icon': '🏚️', 
+            'label': 'Subsidence Repairs',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_7', '0')).strip() or 0) >= 2
+        },
+        'sitting_tenant': {
+            'category': 'deal',
+            'icon': '🧑‍🤝‍🧑', 
+            'label': 'Sitting Tenant',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_8', '0')).strip() or 0) >= 2
+        },
+        'probate': {
+            'category': 'deal',
+            'icon': '📜', 
+            'label': 'Probate',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_9', '0')).strip() or 0) >= 2
         },
         'fire_flood': {
             'category': 'deal',
             'icon': '🔥', 
             'label': 'Fire/Flood Damaged',
             'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_10', '0')).strip() or 0) >= 2
+        },
+        'barn_church': {
+            'category': 'deal',
+            'icon': '⛪', 
+            'label': 'Barn/Church Conversion',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_11', '0')).strip() or 0) >= 2
+        },
+        'developer_exit': {
+            'category': 'deal',
+            'icon': '🏁', 
+            'label': 'Developer Exit',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_12', '0')).strip() or 0) >= 2
+        },
+        'lease_extension': {
+            'category': 'deal',
+            'icon': '📄', 
+            'label': 'Lease Extension',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_13', '0')).strip() or 0) >= 2
+        },
+        'refi_to_btl': {
+            'category': 'deal',
+            'icon': '🏠', 
+            'label': 'Refinance to BTL',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_14', '0')).strip() or 0) >= 2
         },
         
         # PRODUCT REFINERS
@@ -1039,8 +1093,9 @@ async def get_refiner_options(essentials: DealEssentials):
             remaining = count_if_added(config['check'])
             is_active = False
         
-        # Only show refiners that have some lenders (and don't show if all pass)
-        if remaining > 0 and remaining < len(eligible):
+        # Show refiners that have some lenders (skip if would eliminate all)
+        # For deal scenarios, always show if there are ANY lenders who do it
+        if remaining > 0:
             refiner_data = {
                 'key': key,
                 'icon': config['icon'],
@@ -1055,6 +1110,11 @@ async def get_refiner_options(essentials: DealEssentials):
                 deal_refiners.append(refiner_data)
             else:
                 product_refiners.append(refiner_data)
+    
+    # Sort by remaining count (highest first) within each category
+    borrower_refiners.sort(key=lambda x: (-1 if x['active'] else 0, -x['remaining']))
+    deal_refiners.sort(key=lambda x: (-1 if x['active'] else 0, -x['remaining']))
+    product_refiners.sort(key=lambda x: (-1 if x['active'] else 0, -x['remaining']))
     
     return {
         'base_count': len(eligible),
@@ -1073,6 +1133,7 @@ def apply_refiners(eligible: List[Dict], active_refiners: set) -> List[Dict]:
     result = eligible
     
     refiner_checks = {
+        # Borrower refiners
         'foreign_national': lambda l: 'yes' in str(l.get('can_you_lend_to_foreign_nationals', '')).lower() or 
                                       'only' in str(l.get('can_you_lend_to_foreign_nationals', '')).lower(),
         'expat': lambda l: 'yes' in str(l.get('can_you_lend_to_expats', '')).lower() or
@@ -1083,12 +1144,25 @@ def apply_refiners(eligible: List[Dict], active_refiners: set) -> List[Dict]:
         'ftb': lambda l: 'yes' in str(l.get('do_you_lend_to_first_time_buyers', '')).lower(),
         'ftl': lambda l: 'yes' in str(l.get('do_you_lend_to_first_time_landlords', '')).lower(),
         'non_owner_occ': lambda l: 'yes' in str(l.get('do_you_lend_to_non_owner_occupiers', '')).lower(),
+        
+        # Deal appetite refiners (all 15)
         'auction': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside', '0')).strip() or 0) >= 2,
+        'business_stabilisation': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_1', '0')).strip() or 0) >= 2,
+        'insolvency': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_2', '0')).strip() or 0) >= 2,
         'hmo': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_3', '0')).strip() or 0) >= 2,
-        'probate': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_9', '0')).strip() or 0) >= 2,
         'comm_to_resi': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_4', '0')).strip() or 0) >= 2,
-        'developer_exit': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_12', '0')).strip() or 0) >= 2,
+        'airspace': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_5', '0')).strip() or 0) >= 2,
+        'pre_planning': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_6', '0')).strip() or 0) >= 2,
+        'subsidence': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_7', '0')).strip() or 0) >= 2,
+        'sitting_tenant': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_8', '0')).strip() or 0) >= 2,
+        'probate': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_9', '0')).strip() or 0) >= 2,
         'fire_flood': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_10', '0')).strip() or 0) >= 2,
+        'barn_church': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_11', '0')).strip() or 0) >= 2,
+        'developer_exit': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_12', '0')).strip() or 0) >= 2,
+        'lease_extension': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_13', '0')).strip() or 0) >= 2,
+        'refi_to_btl': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_14', '0')).strip() or 0) >= 2,
+        
+        # Product refiners
         'dual_legal': lambda l: 'yes' in str(l.get('dual_legal_rep_offered', '')).lower(),
         'serviced_interest': lambda l: 'yes' in str(l.get('serviced_interest_allowed', '')).lower(),
         'no_exit_fee': lambda l: 'never' in str(l.get('do_you_charge_exit_fees', '')).lower(),

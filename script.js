@@ -719,33 +719,18 @@ function formatMessageContent(content) {
     // First convert **bold** to <strong>
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
-    // Pattern 1: "1. **Lender Name**" (bold format)
-    html = html.replace(/(\d+)\.\s*<strong>([^<]+)<\/strong>/g, (match, num, lenderName) => {
-        const cleanName = lenderName.trim().replace(/:$/, '');
-        return `<div class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></div>`;
-    });
-    
-    // Pattern 2: "1. Lender Name -" or "2. Lender Name -" (plain text followed by dash)
-    // This catches formats like "1. Castle Trust Bank - Rate 0.75..."
-    html = html.replace(/^(\d+)\.\s+([A-Z][A-Za-z0-9\s&\-']+?)\s+-\s+/gm, (match, num, lenderName) => {
+    // Convert [[Lender Name]] to clickable contact buttons
+    // This is the primary way lender names are formatted by the AI
+    html = html.replace(/\[\[([^\]]+)\]\]/g, (match, lenderName) => {
         const cleanName = lenderName.trim();
-        return `<div class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></div><div class="lender-details">`;
+        return `<span class="lender-name-link" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">${cleanName}</span>`;
     });
     
-    // Close lender-details divs at next numbered item or end
-    html = html.replace(/<\/div><div class="lender-details">([^]*?)(?=<div class="lender-rec">|$)/g, '</div><div class="lender-details">$1</div>');
-    
-    // Pattern 3: "## Best for X: Lender Name" headers
-    html = html.replace(/##\s*Best[^:]*:\s*([A-Za-z][A-Za-z0-9\s&\-']+)/g, (match, lenderName) => {
-        const cleanName = lenderName.trim();
-        return `<div class="lender-rec"><strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></div>`;
-    });
-    
-    // Handle remaining ## headers
+    // Handle ## headers
     html = html.replace(/##\s+(.+)/g, '<strong>$1</strong>');
     
-    // Handle remaining numbered lists (not already processed)
-    html = html.replace(/^(\d+)\.\s+(?!<)/gm, '<span class="list-num">$1.</span> ');
+    // Handle numbered lists
+    html = html.replace(/^(\d+)\.\s+/gm, '<span class="list-num">$1.</span> ');
     
     // Handle bullet points  
     html = html.replace(/^[•]\s*/gm, '<span class="bullet">•</span> ');
@@ -764,8 +749,6 @@ function formatMessageContent(content) {
     html = html.replace(/<p><\/p>/g, '');
     html = html.replace(/<p><br>/g, '<p>');
     html = html.replace(/<br><br>/g, '<br>');
-    html = html.replace(/<p><div/g, '<div');
-    html = html.replace(/<\/div><\/p>/g, '</div>');
     
     return html;
 }
