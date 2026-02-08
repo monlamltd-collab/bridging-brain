@@ -322,6 +322,7 @@ function getDealEssentials() {
     const works = parseCurrency(document.getElementById('input-works').value);
     const gdv = parseCurrency(document.getElementById('input-gdv').value);
     const borrowerCash = parseCurrency(document.getElementById('input-borrower-cash')?.value || 0);
+    const loanTerm = parseInt(document.getElementById('select-term')?.value || '12');
     const txnType = getTransactionType();
     const inputMode = getInputMode();
     const deposit = inputMode === 'deposit' ? parseCurrency(document.getElementById('input-deposit').value) : null;
@@ -348,6 +349,7 @@ function getDealEssentials() {
         property_type: document.getElementById('select-property').value,
         geography: document.getElementById('select-geography').value,
         charge_position: document.getElementById('select-charge').value,
+        loan_term_months: loanTerm,
         is_regulated: document.getElementById('toggle-regulated').checked,
         is_refurb: document.getElementById('toggle-refurb').checked,
         cost_of_works: works || null,

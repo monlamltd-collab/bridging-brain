@@ -69,10 +69,12 @@ class DealEssentials(BaseModel):
     property_type: str = "residential"
     geography: str = "England"
     charge_position: str = "1st"
+    loan_term_months: int = 12
     is_regulated: bool = False
     is_refurb: bool = False
     cost_of_works: Optional[float] = None
     gdv: Optional[float] = None
+    borrower_cash_for_works: Optional[float] = None
     works_intensity: Optional[str] = None  # light, medium, heavy, very_heavy
     entity_type: str = "individual"
     scenarios: List[str] = []
@@ -203,6 +205,172 @@ def get_lender_feedback(lender_name: str = None) -> List[Dict]:
     return [dict(row) for row in rows]
 
 # ============================================================================
+# NET LTV ESTIMATION
+# ============================================================================
+
+def estimate_net_from_gross(gross_ltv: float, rate_band: str, proc_fee: str, loan_term_months: int = 12, lender_min_months: str = '3') -> float:
+    """
+    Estimate net LTV from gross LTV based on retained interest and fees.
+    
+    Uses the GREATER of:
+    - Borrower's requested loan term
+    - Lender's minimum interest months
+    
+    Typical deductions:
+    - Proc fee: 1-2.5%
+    - Retained interest: (monthly rate × months retained)
+    
+    Returns estimated net LTV.
+    """
+    if not gross_ltv:
+        return 0
+    
+    # Parse proc fee (default 2%)
+    fee_pct = 2.0
+    if proc_fee:
+        proc_str = str(proc_fee).lower()
+        if 'negotiable' in proc_str or 'no set' in proc_str:
+            fee_pct = 1.5  # Assume competitive
+        else:
+            import re
+            match = re.search(r'(\d+\.?\d*)', proc_str)
+            if match:
+                fee_pct = float(match.group(1))
+    
+    # Parse rate band to get midpoint monthly rate
+    monthly_rate = 1.0  # default 1% per month
+    if rate_band:
+        rate_str = str(rate_band).lower()
+        # Bands like "0.75-1.0%" or "0.5% - 0.75%"
+        import re
+        rates = re.findall(r'(\d+\.?\d*)', rate_str)
+        if len(rates) >= 2:
+            monthly_rate = (float(rates[0]) + float(rates[1])) / 2
+        elif len(rates) == 1:
+            monthly_rate = float(rates[0])
+    
+    # Parse lender's minimum months
+    lender_min = 3
+    if lender_min_months:
+        months_str = str(lender_min_months).lower()
+        if 'depends' in months_str:
+            lender_min = 3
+        else:
+            import re
+            match = re.search(r'(\d+)', months_str)
+            if match:
+                lender_min = int(match.group(1))
+    
+    # Use the GREATER of loan term or lender minimum
+    # Interest is retained for the full loan term
+    months_retained = max(loan_term_months, lender_min)
+    
+    # Calculate deduction
+    # Interest retained as % of loan
+    interest_deduction = monthly_rate * months_retained
+    total_deduction = fee_pct + interest_deduction
+    
+    # Net LTV = Gross LTV × (1 - deduction%)
+    # If gross is 75% and deductions are 14.2% (2% fee + 12×1.02%), 
+    # net is roughly 75% × 0.858 = 64.4%
+    
+    net_ltv = gross_ltv * (1 - total_deduction / 100)
+    
+    return net_ltv
+
+
+def check_net_ltv_shortfall(lender: dict, required_net_ltv: float, borrower_deposit: float, loan_term_months: int = 12, is_refurb: bool = False) -> dict:
+    """
+    Check if lender's estimated net LTV meets borrower's requirement.
+    
+    This is used internally only - we NEVER display estimated net figures to users.
+    Purpose: knock out lenders way off, warn where tight, promote where comfortable.
+    
+    Returns dict with:
+    - passes: bool
+    - warning: bool
+    - comfortable: bool (has headroom - for AI to promote)
+    - message: str (never includes specific net figures)
+    """
+    result = {
+        'passes': True,
+        'warning': False,
+        'comfortable': False,
+        'message': None,
+        'is_net_lender': False
+    }
+    
+    # Detect NET lenders from various sources
+    is_net = False
+    
+    # Check all LTV columns for "net" keyword
+    net_keywords = ['net']
+    for col in lender.keys():
+        if 'ltv' in col.lower() or 'advance' in col.lower() or 'bmv' in col.lower():
+            val_str = str(lender.get(col, '') or '').lower()
+            if any(kw in val_str for kw in net_keywords):
+                is_net = True
+                result['is_net_lender'] = True
+                break
+    
+    # Also check BMV column - high BMV LTV often indicates net-basis lender
+    bmv_col = None
+    for col in lender.keys():
+        if 'bmv' in col.lower():
+            bmv_val = str(lender.get(col, '') or '').lower()
+            if bmv_val and 'n/a' not in bmv_val and 'not' not in bmv_val:
+                # Has BMV capability - often indicates net-friendly
+                bmv_ltv = parse_ltv(lender.get(col))
+                if bmv_ltv and bmv_ltv >= 90:
+                    # Very high BMV LTV suggests they work on net basis
+                    is_net = True
+                    result['is_net_lender'] = True
+            break
+    
+    # Get gross LTV
+    gross_ltv = None
+    for col in lender.keys():
+        if 'max_ltv' in col.lower() and 'residential' in col.lower() and '1st' in col.lower():
+            gross_ltv = parse_ltv(lender.get(col))
+            ltv_str = str(lender.get(col, '') or '').lower()
+            if 'net' in ltv_str:
+                is_net = True
+                result['is_net_lender'] = True
+            break
+    
+    if not gross_ltv:
+        return result
+    
+    # Calculate estimated net (internal use only - never displayed)
+    if is_net:
+        estimated_net = gross_ltv
+    else:
+        rate_band = lender.get('approximate_interest_rate_band', '')
+        proc_fee = lender.get('typical_proc_fee', '')
+        lender_min_months = lender.get('minimum_number_of_months_interest', '')
+        estimated_net = estimate_net_from_gross(gross_ltv, rate_band, proc_fee, loan_term_months, lender_min_months)
+    
+    # Compare to requirement
+    if estimated_net:
+        shortfall = required_net_ltv - estimated_net
+        shortfall_pct = (shortfall / required_net_ltv) * 100 if required_net_ltv > 0 else 0
+        
+        if shortfall_pct > 5:
+            # Way off - exclude
+            result['passes'] = False
+            result['message'] = f"Net advance likely insufficient for {loan_term_months}m term after fees & interest retention"
+        elif shortfall_pct > 0:
+            # Tight - warn
+            result['warning'] = True
+            result['message'] = f"Net advance may be tight for {loan_term_months}m term - verify with lender"
+        elif shortfall_pct < -5:
+            # Comfortable headroom - promote
+            result['comfortable'] = True
+    
+    return result
+
+
+# ============================================================================
 # KNOCKOUT FILTER ENGINE
 # ============================================================================
 
@@ -285,7 +453,7 @@ def apply_knockouts(lenders: List[Dict], essentials: DealEssentials) -> Dict[str
                         exclusion_reasons.append(f"Doesn't lend to {essentials.entity_type}")
                     break
         
-        # 6. LTV knockout (with tolerance) - also exclude if "not available" for this property type
+        # 6. Property type / charge position availability check
         ltv_col = get_ltv_column(essentials.property_type, essentials.is_regulated, essentials.charge_position)
         max_ltv = None
         ltv_raw_value = None
@@ -295,7 +463,7 @@ def apply_knockouts(lenders: List[Dict], essentials: DealEssentials) -> Dict[str
                 max_ltv = parse_ltv(lender.get(lender_col))
                 break
         
-        # Check if lender doesn't offer this charge position / property type
+        # Check if lender doesn't offer this charge position / property type at all
         if ltv_raw_value and ('not available' in ltv_raw_value or 'n/a' in ltv_raw_value or ltv_raw_value == '' or "don't lend" in ltv_raw_value or "dont lend" in ltv_raw_value):
             # More specific message based on charge position or property type
             if essentials.property_type == 'land_with_pp':
@@ -310,8 +478,29 @@ def apply_knockouts(lenders: List[Dict], essentials: DealEssentials) -> Dict[str
                 exclusion_reasons.append("Doesn't offer equitable charges")
             else:
                 exclusion_reasons.append(f"Doesn't lend on {essentials.property_type.replace('_', ' ')}")
-        elif max_ltv and ltv > max_ltv:  # Exact LTV knockout - no tolerance
-            exclusion_reasons.append(f"LTV {ltv:.1f}% exceeds max {max_ltv}%")
+        
+        # 7. NET LTV check - this is the PRIMARY leverage filter
+        # We estimate net LTV (after fees & retained interest) and compare to requirement
+        # No separate gross knockout - net calculation handles everything
+        net_ltv_warning = None
+        net_ltv_comfortable = False
+        net_check_result = None
+        
+        if not exclusion_reasons and max_ltv:
+            net_check_result = check_net_ltv_shortfall(
+                lender, 
+                ltv,  # Required LTV is what borrower needs
+                essentials.deposit_available or 0,
+                essentials.loan_term_months,
+                essentials.is_refurb
+            )
+            
+            if not net_check_result['passes']:
+                exclusion_reasons.append(net_check_result['message'])
+            elif net_check_result['warning']:
+                net_ltv_warning = net_check_result['message']
+            elif net_check_result['comfortable']:
+                net_ltv_comfortable = True
         
         # Categorise
         lender_result = {
@@ -319,7 +508,16 @@ def apply_knockouts(lenders: List[Dict], essentials: DealEssentials) -> Dict[str
             'exclusion_reasons': exclusion_reasons,
             'calculated_ltv': ltv,
             'works_ratio': works_ratio,
+            'max_gross_ltv': max_ltv,  # Store for leverage hints
         }
+        
+        # Add net LTV flags if applicable (no specific figures - just guidance)
+        if net_ltv_warning:
+            lender_result['net_ltv_warning'] = net_ltv_warning
+        if net_ltv_comfortable:
+            lender_result['net_ltv_comfortable'] = True
+        if net_check_result:
+            lender_result['net_check_result'] = net_check_result
         
         if exclusion_reasons:
             excluded.append(lender_result)
@@ -349,80 +547,210 @@ def apply_knockouts(lenders: List[Dict], essentials: DealEssentials) -> Dict[str
 
 def generate_leverage_hints(lenders: List[Dict], essentials: DealEssentials, ltv: float, eligible: List[Dict], excluded: List[Dict]) -> Dict:
     """
-    Analyze excluded lenders to find scenarios that could unlock them.
-    Returns hints about refurb, serviced interest, etc. that could help.
+    Analyze lenders with tight/short net LTV to find levers that could help.
+    Only fires when there's a problem to solve.
+    
+    7 Levers:
+    1. Shorter term - less retained interest
+    2. Serviced interest - pay monthly, gross ≈ net
+    3. Rolled interest (refurb) - interest against GDV
+    4. Light refurb - higher day-1 LTV
+    5. BMV purchase - higher LTV vs purchase price
+    6. Additional security - 2nd charge boosts leverage
+    7. Lower rate lender - less interest retained
     """
     hints = {
-        'refurb_unlocks': [],  # Lenders excluded on LTV but have higher refurb day-1
-        'serviced_interest_helps': [],  # Gross lenders where serviced interest = effectively net
-        'tight_ltv': ltv > 70,  # Flag if LTV is in the tight zone
-        'summary': None
+        'shorter_term': [],
+        'serviced_interest': [],
+        'light_refurb': [],
+        'bmv_purchase': [],
+        'additional_security': [],
+        'lower_rate_lender': [],
+        'summary': None,
+        'has_hints': False
     }
     
-    # Only analyze if LTV is tight and not already a refurb
-    if ltv <= 70 or essentials.is_refurb:
+    loan_term = essentials.loan_term_months
+    
+    # Collect lenders that are tight or excluded for net LTV reasons
+    problem_lenders = []
+    for lender in excluded:
+        reasons = lender.get('exclusion_reasons', [])
+        if any('net' in r.lower() or 'insufficient' in r.lower() or 'tight' in r.lower() for r in reasons):
+            problem_lenders.append(lender)
+    
+    # Also check eligible lenders with warnings
+    for lender in eligible:
+        if lender.get('net_ltv_warning'):
+            problem_lenders.append(lender)
+    
+    if not problem_lenders:
         return hints
     
-    for lender in excluded:
+    for lender in problem_lenders:
         name = lender.get('name', '')
-        exclusion_reasons = lender.get('exclusion_reasons', [])
+        rate_band = lender.get('approximate_interest_rate_band', '')
+        proc_fee = lender.get('typical_proc_fee', '')
+        lender_min_months = lender.get('minimum_number_of_months_interest', '')
+        gross_ltv = lender.get('max_gross_ltv') or parse_ltv(lender.get('max_ltv_1st_charge_residential_investment_property', ''))
         
-        # Check if excluded specifically for LTV
-        ltv_excluded = any('LTV' in r or 'exceeds' in r.lower() for r in exclusion_reasons)
+        if not gross_ltv:
+            continue
         
-        if ltv_excluded:
-            # Check if refurb day-1 advance is higher
-            day1_advance = str(lender.get('maximum_day_1_advance', '') or '').lower()
-            day1_ltv = str(lender.get('maximum_day_1_ltv', '') or '').lower()
-            
-            # Parse the refurb LTV
-            refurb_ltv = None
-            for val in [day1_advance, day1_ltv]:
-                if val and val not in ('none', 'nan', ''):
-                    import re
-                    match = re.search(r'(\d+)', val)
-                    if match:
-                        refurb_ltv = int(match.group(1))
-                        break
-            
-            if refurb_ltv and refurb_ltv >= ltv:
-                is_net = 'net' in day1_advance or 'net' in day1_ltv
-                hints['refurb_unlocks'].append({
+        # 1. SHORTER TERM - would a shorter term help?
+        if loan_term > 6:
+            shorter_terms = [t for t in [6, 9] if t < loan_term]
+            for shorter in shorter_terms:
+                net_at_shorter = estimate_net_from_gross(gross_ltv, rate_band, proc_fee, shorter, lender_min_months)
+                if net_at_shorter and net_at_shorter >= ltv:
+                    hints['shorter_term'].append({
+                        'name': name,
+                        'current_term': loan_term,
+                        'suggested_term': shorter,
+                        'note': f'{shorter}m term could work'
+                    })
+                    break
+        
+        # 2. SERVICED INTEREST - would paying monthly help?
+        serviced = str(lender.get('serviced_interest_allowed', '') or '').lower()
+        if 'yes' in serviced:
+            # With serviced interest, no interest retention - just proc fee deducted
+            net_with_serviced = gross_ltv * (1 - parse_proc_fee(proc_fee) / 100)
+            if net_with_serviced >= ltv:
+                hints['serviced_interest'].append({
                     'name': name,
-                    'refurb_ltv': f"{refurb_ltv}% {'net' if is_net else 'gross'}",
-                    'standard_ltv': lender.get('max_ltv_1st_charge_residential_investment_property', 'N/A')
+                    'note': 'Serviced interest available - pay monthly instead of retaining'
                 })
-            
-            # Check if serviced interest could help (for gross lenders)
-            serviced = str(lender.get('serviced_interest_allowed', '') or '').lower()
-            std_ltv = str(lender.get('max_ltv_1st_charge_residential_investment_property', '') or '').lower()
-            
-            if 'yes' in serviced and 'gross' in std_ltv:
-                # Parse the gross LTV
-                match = re.search(r'(\d+)', std_ltv)
-                if match:
-                    gross_ltv = int(match.group(1))
-                    # Serviced interest on gross is effectively ~3-5% better
-                    effective_net = gross_ltv  # With serviced, gross ≈ net
-                    if effective_net >= ltv:
-                        hints['serviced_interest_helps'].append({
+        
+        # 3. LIGHT REFURB - higher day-1 LTV available?
+        if not essentials.is_refurb:
+            day1_advance = lender.get('maximum_day_1_advance', '') or lender.get('maximum_day_1_ltv', '')
+            if day1_advance:
+                refurb_gross = parse_ltv(day1_advance)
+                if refurb_gross and refurb_gross > gross_ltv:
+                    # Check if net refurb LTV would work
+                    is_net_refurb = 'net' in str(day1_advance).lower()
+                    if is_net_refurb:
+                        net_refurb = refurb_gross
+                    else:
+                        net_refurb = estimate_net_from_gross(refurb_gross, rate_band, proc_fee, loan_term, lender_min_months)
+                    
+                    if net_refurb and net_refurb >= ltv:
+                        hints['light_refurb'].append({
                             'name': name,
-                            'gross_ltv': f"{gross_ltv}% gross",
-                            'note': 'With serviced interest, gross effectively = net'
+                            'note': 'Light refurb unlocks higher day-1 advance'
                         })
+        
+        # 4. BMV PURCHASE - if applicable, higher LTV vs purchase price?
+        bmv_ltv = None
+        for col in lender.keys():
+            if 'bmv' in col.lower():
+                bmv_ltv = parse_ltv(lender.get(col))
+                break
+        
+        if bmv_ltv and bmv_ltv > gross_ltv:
+            hints['bmv_purchase'].append({
+                'name': name,
+                'note': 'BMV scenario could unlock higher LTV vs purchase price'
+            })
+        
+        # 5. ADDITIONAL SECURITY - does lender offer supporting 2nd?
+        if essentials.charge_position == '1st':
+            supporting_2nd = None
+            for col in lender.keys():
+                if 'supporting' in col.lower() and '2nd' in col.lower():
+                    val = str(lender.get(col, '')).lower()
+                    if val and 'not available' not in val and 'n/a' not in val:
+                        supporting_2nd = parse_ltv(lender.get(col))
+                    break
+            
+            if supporting_2nd:
+                hints['additional_security'].append({
+                    'name': name,
+                    'note': 'Accepts supporting 2nd charge for additional leverage'
+                })
+    
+    # 6. LOWER RATE LENDER - find lenders with better rates among excluded
+    # Compare rates of problem lenders to find if switching helps
+    rate_comparison = []
+    for lender in problem_lenders:
+        rate_band = lender.get('approximate_interest_rate_band', '')
+        avg_rate = parse_rate_band_midpoint(rate_band)
+        if avg_rate:
+            rate_comparison.append((lender.get('name', ''), avg_rate, lender))
+    
+    if len(rate_comparison) > 1:
+        rate_comparison.sort(key=lambda x: x[1])
+        lowest_name, lowest_rate, lowest_lender = rate_comparison[0]
+        highest_name, highest_rate, _ = rate_comparison[-1]
+        
+        if highest_rate - lowest_rate >= 0.2:  # Meaningful difference
+            # Check if lowest rate lender would work
+            gross = lowest_lender.get('max_gross_ltv') or parse_ltv(lowest_lender.get('max_ltv_1st_charge_residential_investment_property', ''))
+            if gross:
+                net_at_lower = estimate_net_from_gross(
+                    gross, 
+                    lowest_lender.get('approximate_interest_rate_band', ''),
+                    lowest_lender.get('typical_proc_fee', ''),
+                    loan_term,
+                    lowest_lender.get('minimum_number_of_months_interest', '')
+                )
+                if net_at_lower and net_at_lower >= ltv:
+                    hints['lower_rate_lender'].append({
+                        'name': lowest_name,
+                        'note': 'Lower rate means less retained interest'
+                    })
     
     # Generate summary
-    if hints['refurb_unlocks'] or hints['serviced_interest_helps']:
-        parts = []
-        if hints['refurb_unlocks']:
-            names = [h['name'] for h in hints['refurb_unlocks'][:3]]
-            parts.append(f"Refurb scenario unlocks: {', '.join(names)}")
-        if hints['serviced_interest_helps']:
-            names = [h['name'] for h in hints['serviced_interest_helps'][:3]]
-            parts.append(f"Serviced interest helps: {', '.join(names)}")
-        hints['summary'] = "; ".join(parts)
+    summary_parts = []
+    if hints['shorter_term']:
+        summary_parts.append(f"Shorter term could help with {hints['shorter_term'][0]['name']}")
+    if hints['serviced_interest']:
+        names = [h['name'] for h in hints['serviced_interest'][:2]]
+        summary_parts.append(f"Serviced interest available: {', '.join(names)}")
+    if hints['light_refurb']:
+        names = [h['name'] for h in hints['light_refurb'][:2]]
+        summary_parts.append(f"Light refurb unlocks: {', '.join(names)}")
+    if hints['bmv_purchase']:
+        summary_parts.append("BMV scenario could improve leverage")
+    if hints['additional_security']:
+        summary_parts.append("Additional security option available")
+    if hints['lower_rate_lender']:
+        summary_parts.append(f"Lower rate lender: {hints['lower_rate_lender'][0]['name']}")
+    
+    if summary_parts:
+        hints['summary'] = "; ".join(summary_parts)
+        hints['has_hints'] = True
     
     return hints
+
+
+def parse_proc_fee(proc_fee_str: str) -> float:
+    """Parse proc fee string to percentage"""
+    if not proc_fee_str:
+        return 2.0
+    proc_str = str(proc_fee_str).lower()
+    if 'negotiable' in proc_str or 'no set' in proc_str:
+        return 1.5
+    import re
+    match = re.search(r'(\d+\.?\d*)', proc_str)
+    if match:
+        return float(match.group(1))
+    return 2.0
+
+
+def parse_rate_band_midpoint(rate_band: str) -> float:
+    """Parse rate band string to midpoint monthly rate"""
+    if not rate_band:
+        return None
+    rate_str = str(rate_band).lower()
+    import re
+    rates = re.findall(r'(\d+\.?\d*)', rate_str)
+    if len(rates) >= 2:
+        return (float(rates[0]) + float(rates[1])) / 2
+    elif len(rates) == 1:
+        return float(rates[0])
+    return None
 
 
 def generate_security_hints(lenders: List[Dict], essentials: DealEssentials, ltv: float, eligible: List[Dict], excluded: List[Dict]) -> Dict:
@@ -578,6 +906,7 @@ def build_lender_context(eligible_lenders: List[Dict], excluded_count: int, summ
             context += f"- **Purchase Price**: £{deal_essentials.get('purchase_price'):,.0f}\n"
         
         context += f"- **Market Value**: £{deal_essentials.get('market_value', 0):,.0f}\n"
+        context += f"- **Loan Term**: {deal_essentials.get('loan_term_months', 12)} months\n"
         context += f"- **Property Type**: {deal_essentials.get('property_type', 'residential').replace('_', ' ').title()}\n"
         context += f"- **Geography**: {deal_essentials.get('geography', 'England')}\n"
         context += f"- **Entity Type**: {deal_essentials.get('entity_type', 'individual').replace('_', ' ').title()}\n"
@@ -703,6 +1032,14 @@ def build_lender_context(eligible_lenders: List[Dict], excluded_count: int, summ
                 context += "- **Deal Appetite**:\n"
                 for note in appetite_notes:
                     context += f"  - {note}\n"
+        
+        # Include net LTV warning if present
+        if lender.get('net_ltv_warning'):
+            context += f"- ⚠️ **Net LTV Warning**: {lender.get('net_ltv_warning')}\n"
+        
+        # Include comfortable flag if present (for AI to promote)
+        if lender.get('net_ltv_comfortable'):
+            context += f"- ✅ **Net LTV Headroom**: Comfortable margin for this term length\n"
         
         # Include contact details
         contact_info = get_lender_contact(lender)
