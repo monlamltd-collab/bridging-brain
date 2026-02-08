@@ -260,9 +260,13 @@ def apply_knockouts(lenders: List[Dict], essentials: DealEssentials) -> Dict[str
                 break
         
         # Check if lender doesn't offer this charge position / property type
-        if ltv_raw_value and ('not available' in ltv_raw_value or 'n/a' in ltv_raw_value or ltv_raw_value == ''):
-            # More specific message based on charge position
-            if essentials.charge_position == '2nd_standalone':
+        if ltv_raw_value and ('not available' in ltv_raw_value or 'n/a' in ltv_raw_value or ltv_raw_value == '' or "don't lend" in ltv_raw_value or "dont lend" in ltv_raw_value):
+            # More specific message based on charge position or property type
+            if essentials.property_type == 'land_with_pp':
+                exclusion_reasons.append("Doesn't lend on land with planning")
+            elif essentials.property_type == 'land_no_pp':
+                exclusion_reasons.append("Doesn't lend on land without planning")
+            elif essentials.charge_position == '2nd_standalone':
                 exclusion_reasons.append("Doesn't offer standalone 2nd charge")
             elif essentials.charge_position == '2nd_supporting':
                 exclusion_reasons.append("Doesn't offer supporting 2nd charge")
