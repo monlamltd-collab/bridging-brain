@@ -693,17 +693,27 @@ function addMessage(role, content) {
 }
 
 function formatMessageContent(content) {
-    // First, escape any HTML
     let html = content;
     
-    // Convert **bold** to <strong>
+    // First convert **bold** to <strong>
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
-    // Handle numbered lists (1. 2. 3.)
-    html = html.replace(/^(\d+)\.\s+/gm, '<br><span class="list-num">$1.</span> ');
+    // Add contact buttons for numbered lender recommendations BEFORE other formatting
+    // Pattern: "1. **Lender Name**" at start of line or after newline
+    html = html.replace(/(\d+)\.\s*<strong>([^<]+)<\/strong>/g, (match, num, lenderName) => {
+        const cleanName = lenderName.trim().replace(/:$/, '');
+        // Only add button if name looks like a lender (contains space or common suffix)
+        if (cleanName.length > 5 && (cleanName.includes(' ') || /Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group/i.test(cleanName))) {
+            return `<span class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></span>`;
+        }
+        return `<span class="list-num">${num}.</span> <strong>${cleanName}</strong>`;
+    });
     
-    // Handle bullet points
-    html = html.replace(/^[-•]\s+/gm, '<br>• ');
+    // Handle remaining numbered lists (not already processed)
+    html = html.replace(/^(\d+)\.\s+(?!<)/gm, '<span class="list-num">$1.</span> ');
+    
+    // Handle bullet points  
+    html = html.replace(/^[-•]\s+/gm, '• ');
     
     // Convert double newlines to paragraph breaks
     html = html.replace(/\n\n/g, '</p><p>');
@@ -714,17 +724,10 @@ function formatMessageContent(content) {
     // Wrap in paragraph
     html = '<p>' + html + '</p>';
     
-    // Clean up empty paragraphs
+    // Clean up empty paragraphs and formatting issues
     html = html.replace(/<p><\/p>/g, '');
     html = html.replace(/<p><br>/g, '<p>');
-    
-    // Add contact buttons for lender names - only for recommendations
-    // Look for patterns like "1. **Lender Name**" or numbered recommendations
-    const lenderPattern = /<span class="list-num">(\d+)\.<\/span>\s*<strong>([^<]+)<\/strong>/g;
-    html = html.replace(lenderPattern, (match, num, lenderName) => {
-        const cleanName = lenderName.trim().replace(/:$/, '');
-        return `<span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button>`;
-    });
+    html = html.replace(/<br><br>/g, '<br>');
     
     return html;
 }
