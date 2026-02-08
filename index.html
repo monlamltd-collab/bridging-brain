@@ -935,11 +935,35 @@
             margin-bottom: 1.5rem;
         }
         
+        .contact-section {
+            padding: 0.75rem 0;
+        }
+        
+        .contact-section:first-child {
+            padding-top: 0;
+        }
+        
+        .contact-section:not(:last-child) {
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .contact-section:last-child {
+            padding-bottom: 0;
+        }
+        
+        .contact-section-title {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.4rem;
+        }
+        
         .contact-name {
             font-size: 1.1rem;
             font-weight: 600;
             color: var(--accent);
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem;
         }
         
         .contact-info {
@@ -948,6 +972,10 @@
             gap: 0.25rem;
             font-size: 0.9rem;
             color: var(--text-muted);
+        }
+        
+        .contact-info a {
+            color: var(--accent);
         }
         
         .modal-question {
@@ -1467,10 +1495,23 @@
             <!-- Step 1: Contact Choice -->
             <div id="contact-step-1" class="modal-step">
                 <div class="contact-details-box">
-                    <div class="contact-name" id="contact-bdm-name"></div>
-                    <div class="contact-info">
-                        <span id="contact-email"></span>
-                        <span id="contact-phone"></span>
+                    <!-- BDM Details -->
+                    <div id="contact-bdm-section" class="contact-section">
+                        <div class="contact-section-title">Your BDM</div>
+                        <div class="contact-name" id="contact-bdm-name"></div>
+                        <div class="contact-info">
+                            <span id="contact-bdm-email"></span>
+                            <span id="contact-bdm-phone"></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Central/General Enquiries -->
+                    <div id="contact-central-section" class="contact-section">
+                        <div class="contact-section-title">Central Enquiries</div>
+                        <div class="contact-info">
+                            <span id="contact-central-email"></span>
+                            <span id="contact-central-phone"></span>
+                        </div>
                     </div>
                 </div>
                 

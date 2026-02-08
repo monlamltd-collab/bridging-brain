@@ -686,18 +686,13 @@ def get_lender_contact(lender: Dict) -> Dict:
     
     # Clean up empty/nan values
     for key in contact:
-        if not contact[key] or str(contact[key]).lower() in ('nan', 'none', ''):
+        val = contact[key]
+        if not val or str(val).lower() in ('nan', 'none', 'n/a', ''):
             contact[key] = ''
+        else:
+            contact[key] = str(val).strip()
     
-    # Use BDM details if available, otherwise general
-    if not contact['email']:
-        contact['email'] = contact['bdm_email']
-    if not contact['phone']:
-        contact['phone'] = contact['bdm_mobile']
-    if not contact['bdm_name']:
-        contact['bdm_name'] = 'New Business Team'
-    
-    return contact if contact['email'] or contact['phone'] else None
+    return contact
 
 def chat_with_ai(session_id: str, user_message: str, deal_essentials: Optional[DealEssentials] = None) -> str:
     """Send message to AI and get response"""

@@ -945,15 +945,38 @@ function openContactModal(lenderName) {
             console.log('Contact data received:', data);
             
             const contact = data.contact || {};
-            const bdmName = contact.bdm_name || 'New Business Team';
-            const email = contact.email || contact.bdm_email || '';
-            const phone = contact.phone || contact.bdm_mobile || '';
             
-            document.getElementById('contact-bdm-name').textContent = bdmName;
-            document.getElementById('contact-email').innerHTML = email ? 
-                `📧 <a href="mailto:${email}">${email}</a>` : 'Email not available';
-            document.getElementById('contact-phone').innerHTML = phone ? 
-                `📞 ${phone}` : 'Phone not available';
+            // BDM Section
+            const bdmSection = document.getElementById('contact-bdm-section');
+            const bdmName = contact.bdm_name || '';
+            const bdmEmail = contact.bdm_email || '';
+            const bdmPhone = contact.bdm_mobile || '';
+            
+            if (bdmName || bdmEmail || bdmPhone) {
+                bdmSection.style.display = 'block';
+                document.getElementById('contact-bdm-name').textContent = bdmName || 'BDM';
+                document.getElementById('contact-bdm-email').innerHTML = bdmEmail ? 
+                    `📧 <a href="mailto:${bdmEmail}">${bdmEmail}</a>` : '';
+                document.getElementById('contact-bdm-phone').innerHTML = bdmPhone ? 
+                    `📞 ${bdmPhone}` : '';
+            } else {
+                bdmSection.style.display = 'none';
+            }
+            
+            // Central Enquiries Section
+            const centralSection = document.getElementById('contact-central-section');
+            const centralEmail = contact.email || '';
+            const centralPhone = contact.phone || '';
+            
+            if (centralEmail || centralPhone) {
+                centralSection.style.display = 'block';
+                document.getElementById('contact-central-email').innerHTML = centralEmail ? 
+                    `📧 <a href="mailto:${centralEmail}">${centralEmail}</a>` : '';
+                document.getElementById('contact-central-phone').innerHTML = centralPhone ? 
+                    `📞 ${centralPhone}` : '';
+            } else {
+                centralSection.style.display = 'none';
+            }
             
             // Show refurb section if deal is refurb
             const essentials = getDealEssentials();
