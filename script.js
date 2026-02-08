@@ -698,16 +698,28 @@ function formatMessageContent(content) {
     // First convert **bold** to <strong>
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
-    // Add contact buttons for numbered lender recommendations BEFORE other formatting
-    // Pattern: "1. **Lender Name**" at start of line or after newline
+    // Add contact buttons for numbered lender recommendations
+    // Pattern: "1. **Lender Name**" 
     html = html.replace(/(\d+)\.\s*<strong>([^<]+)<\/strong>/g, (match, num, lenderName) => {
         const cleanName = lenderName.trim().replace(/:$/, '');
-        // Only add button if name looks like a lender (contains space or common suffix)
         if (cleanName.length > 5 && (cleanName.includes(' ') || /Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group/i.test(cleanName))) {
             return `<span class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></span>`;
         }
         return `<span class="list-num">${num}.</span> <strong>${cleanName}</strong>`;
     });
+    
+    // Add contact buttons for ## Header style lender recommendations
+    // Pattern: "## Best for X: Lender Name" or "## Lender Name"
+    html = html.replace(/##\s*(?:Best[^:]*:\s*)?([A-Z][A-Za-z0-9\s&\-']+(?:Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group|Holdings)?)\b/g, (match, lenderName) => {
+        const cleanName = lenderName.trim().replace(/:$/, '');
+        if (cleanName.length > 5 && (cleanName.includes(' ') || /Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group/i.test(cleanName))) {
+            return `<strong class="lender-header">${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button>`;
+        }
+        return `<strong>${cleanName}</strong>`;
+    });
+    
+    // Handle remaining ## headers (not lenders)
+    html = html.replace(/##\s+(.+)/g, '<strong>$1</strong>');
     
     // Handle remaining numbered lists (not already processed)
     html = html.replace(/^(\d+)\.\s+(?!<)/gm, '<span class="list-num">$1.</span> ');
