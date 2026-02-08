@@ -204,9 +204,11 @@ function updateMetrics() {
 
 function updateRefurbCalcs(loan, value, works, gdv, isRefurb) {
     const calcsPanel = document.getElementById('refurb-calcs');
+    const hintPanel = document.getElementById('funding-model-hint');
     
     if (!isRefurb || works <= 0 || value <= 0) {
         calcsPanel.style.display = 'none';
+        if (hintPanel) hintPanel.style.display = 'none';
         return;
     }
     
@@ -240,6 +242,46 @@ function updateRefurbCalcs(loan, value, works, gdv, isRefurb) {
     } else {
         ltgdvEl.textContent = '-';
     }
+    
+    // Funding model hint
+    updateFundingModelHint(works, worksRatio, intensity);
+}
+
+function updateFundingModelHint(works, worksRatio, intensity) {
+    const hintPanel = document.getElementById('funding-model-hint');
+    const hintText = document.getElementById('funding-model-hint-text');
+    const borrowerCash = parseCurrency(document.getElementById('input-borrower-cash')?.value || 0);
+    
+    if (!hintPanel) return;
+    
+    // If no borrower cash specified, show general guidance
+    if (!borrowerCash) {
+        if (worksRatio < 30) {
+            hintText.innerHTML = `Light works: <span class="model-tag success">Standard bridge</span> (self-fund works) or <span class="model-tag success">Enhanced Day-1</span> (higher LTV upfront) may work. Enter borrower's available cash for specific guidance.`;
+        } else if (worksRatio < 50) {
+            hintText.innerHTML = `Medium works: Likely needs <span class="model-tag">Staged funding</span> or borrower to self-fund. Enter borrower's available cash to check.`;
+        } else {
+            hintText.innerHTML = `Heavy works: Will need <span class="model-tag warning">Staged funding</span> with QS monitoring. Lender experience requirements apply.`;
+        }
+        hintPanel.style.display = 'flex';
+        return;
+    }
+    
+    // Calculate funding model compatibility
+    const worksShortfall = works - borrowerCash;
+    
+    if (borrowerCash >= works) {
+        // Borrower can self-fund all works
+        hintText.innerHTML = `Borrower can self-fund works (${formatCompact(borrowerCash)} ≥ ${formatCompact(works)}). <span class="model-tag success">Standard bridge</span> will work - no staged funding needed.`;
+    } else if (worksRatio < 30 && worksShortfall <= works * 0.5) {
+        // Light works, partial shortfall - enhanced day-1 might work
+        hintText.innerHTML = `Shortfall: ${formatCompact(worksShortfall)}. Options: <span class="model-tag success">Enhanced Day-1</span> (MSLending, Mint, LendInvest style - higher upfront LTV) or <span class="model-tag">Staged funding</span>.`;
+    } else {
+        // Needs staged funding
+        hintText.innerHTML = `Borrower needs ${formatCompact(worksShortfall)} from lender for works. Requires <span class="model-tag warning">Staged funding</span> lender with adequate min drawdown.`;
+    }
+    
+    hintPanel.style.display = 'flex';
 }
 
 // ============================================================================
@@ -258,6 +300,15 @@ function setupConditionals() {
         updateMetrics();
         updateLiveLenderCount();
     });
+    
+    // Borrower cash field - update hints when changed
+    const borrowerCashInput = document.getElementById('input-borrower-cash');
+    if (borrowerCashInput) {
+        borrowerCashInput.addEventListener('input', () => {
+            updateMetrics();
+            updateLiveLenderCount();
+        });
+    }
 }
 
 // ============================================================================
@@ -270,6 +321,7 @@ function getDealEssentials() {
     const purchasePrice = getPurchasePrice();
     const works = parseCurrency(document.getElementById('input-works').value);
     const gdv = parseCurrency(document.getElementById('input-gdv').value);
+    const borrowerCash = parseCurrency(document.getElementById('input-borrower-cash')?.value || 0);
     const txnType = getTransactionType();
     const inputMode = getInputMode();
     const deposit = inputMode === 'deposit' ? parseCurrency(document.getElementById('input-deposit').value) : null;
@@ -300,6 +352,7 @@ function getDealEssentials() {
         is_refurb: document.getElementById('toggle-refurb').checked,
         cost_of_works: works || null,
         gdv: gdv || null,
+        borrower_cash_for_works: borrowerCash || null,
         works_intensity: worksIntensity,
         entity_type: document.getElementById('select-entity').value,
         active_refiners: Array.from(activeRefiners)
@@ -1022,6 +1075,92 @@ function showAIPForm() {
     document.getElementById('contact-step-1').style.display = 'none';
     document.getElementById('contact-step-2').style.display = 'block';
     document.getElementById('contact-step-3').style.display = 'none';
+    
+    // Pre-populate from Left Brain
+    const essentials = getDealEssentials();
+    if (essentials) {
+        // Entity type
+        const entityMap = {
+            'individual': 'individual',
+            'ltd_spv': 'company',
+            'ltd_trading': 'company',
+            'llp': 'partnership',
+            'trust': 'trust',
+            'sipp_ssas': 'sipp',
+            'charity': 'company',
+            'overseas_entity': 'company'
+        };
+        const aipBorrowerType = document.getElementById('aip-borrower-type');
+        if (aipBorrowerType && essentials.entity_type) {
+            aipBorrowerType.value = entityMap[essentials.entity_type] || '';
+        }
+        
+        // GDV (if refurb)
+        const aipGdv = document.getElementById('aip-gdv');
+        if (aipGdv && essentials.gdv) {
+            aipGdv.value = formatCurrency(essentials.gdv);
+        }
+        
+        // Build deal summary for notes section
+        let dealSummary = [];
+        
+        // Transaction & Loan
+        if (essentials.transaction_type === 'purchase') {
+            dealSummary.push(`Purchase: ${formatCurrency(essentials.purchase_price)}`);
+        } else {
+            dealSummary.push(`Refinance: ${formatCurrency(essentials.market_value)}`);
+        }
+        dealSummary.push(`Loan: ${formatCurrency(essentials.loan_amount)}`);
+        
+        // Property
+        const propTypeLabels = {
+            'residential': 'Residential',
+            'semi_commercial': 'Semi-Commercial/Mixed',
+            'commercial': 'Commercial',
+            'land_with_pp': 'Land (With Planning)',
+            'land_no_pp': 'Land (No Planning)'
+        };
+        dealSummary.push(`Property: ${propTypeLabels[essentials.property_type] || essentials.property_type}`);
+        dealSummary.push(`Location: ${essentials.geography}`);
+        dealSummary.push(`Charge: ${essentials.charge_position}`);
+        
+        // Flags
+        if (essentials.is_regulated) dealSummary.push('Regulated: Yes');
+        
+        // Refurb details
+        if (essentials.is_refurb) {
+            dealSummary.push(`Works: ${formatCurrency(essentials.cost_of_works)}`);
+            if (essentials.gdv) dealSummary.push(`GDV: ${formatCurrency(essentials.gdv)}`);
+            if (essentials.works_intensity) dealSummary.push(`Intensity: ${essentials.works_intensity}`);
+        }
+        
+        // Active refiners (scenarios)
+        if (essentials.active_refiners && essentials.active_refiners.length > 0) {
+            const refinerLabels = {
+                'auction': 'Auction purchase',
+                'foreign_national': 'Foreign national borrower',
+                'expat': 'Expat borrower',
+                'hmo': 'HMO conversion',
+                'probate': 'Probate property',
+                'barn_church': 'Barn/Church conversion',
+                'airspace': 'Airspace development',
+                'comm_to_resi': 'Commercial to residential (PD)',
+                'adverse_credit': 'Adverse credit',
+                'ftb': 'First time buyer',
+                'first_time_dev': 'First time developer'
+            };
+            const scenarios = essentials.active_refiners
+                .map(r => refinerLabels[r] || r)
+                .join(', ');
+            dealSummary.push(`Scenarios: ${scenarios}`);
+        }
+        
+        // Pre-fill notes with deal summary
+        const aipNotes = document.getElementById('aip-notes');
+        if (aipNotes && !aipNotes.value) {
+            aipNotes.value = dealSummary.join('\n');
+        }
+    }
 }
 
 function getAIPDetails() {

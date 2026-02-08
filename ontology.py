@@ -73,6 +73,20 @@ Apply these HARD knockouts before any recommendation:
 | Geography excluded | If geography in geo_exclusions → EXCLUDE |
 | Property type unavailable | If LTV column shows "not available" → EXCLUDE |
 | Entity not accepted | If entity type column = "No" → EXCLUDE |
+| Deal appetite 0 | If scenario selected and appetite = 0 → EXCLUDE |
+
+## DEAL APPETITE SCORING
+
+When a deal scenario is selected (Auction, HMO, Probate, etc.), the lender data will include their appetite score (0-3). Interpret as follows:
+
+| Score | Meaning | How to Present |
+|-------|---------|----------------|
+| 0 | Won't consider | **EXCLUDE** - Do not recommend this lender for this deal |
+| 1 | Low appetite | **WARNING** - Include but flag: "May be reluctant - discuss with BDM before submitting" |
+| 2 | Will consider | **NEUTRAL** - Standard recommendation, no special mention needed |
+| 3 | Strong appetite | **HIGHLIGHT** - This is their sweet spot: "Strong appetite for this deal type" |
+
+When multiple lenders match, prioritise those with appetite score 3 over score 2, and score 2 over score 1.
 
 ## INTELLIGENT QUESTIONS (from ontology)
 

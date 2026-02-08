@@ -664,6 +664,46 @@ def build_lender_context(eligible_lenders: List[Dict], excluded_count: int, summ
                     context += f"- Notes: {str(notes)[:500]}\n"
                 break
         
+        # Include deal appetite scores if active refiners selected
+        if deal_essentials and deal_essentials.get('active_refiners'):
+            active_refiners = deal_essentials.get('active_refiners', [])
+            appetite_mapping = {
+                'auction': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside', 'Auction'),
+                'business_stabilisation': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_1', 'Business Stabilisation'),
+                'insolvency': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_2', 'Insolvency'),
+                'hmo': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_3', 'HMO Conversion'),
+                'comm_to_resi': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_4', 'Commercial to Resi'),
+                'airspace': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_5', 'Airspace Development'),
+                'pre_planning': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_6', 'Pre-Planning'),
+                'subsidence': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_7', 'Subsidence'),
+                'sitting_tenant': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_8', 'Sitting Tenant'),
+                'probate': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_9', 'Probate'),
+                'fire_flood': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_10', 'Fire/Flood Damaged'),
+                'barn_church': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_11', 'Barn/Church Conversion'),
+                'developer_exit': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_12', 'Developer Exit'),
+                'lease_extension': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_13', 'Lease Extension'),
+                'refi_to_btl': ('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_14', 'Refinance to BTL'),
+            }
+            
+            appetite_notes = []
+            for refiner in active_refiners:
+                if refiner in appetite_mapping:
+                    col, label = appetite_mapping[refiner]
+                    score = int(str(lender.get(col, '0')).strip() or 0)
+                    if score == 0:
+                        appetite_notes.append(f"{label}: ❌ WON'T CONSIDER")
+                    elif score == 1:
+                        appetite_notes.append(f"{label}: ⚠️ LOW APPETITE (discuss with BDM)")
+                    elif score == 2:
+                        appetite_notes.append(f"{label}: ✓ Will consider")
+                    elif score == 3:
+                        appetite_notes.append(f"{label}: ⭐ STRONG APPETITE")
+            
+            if appetite_notes:
+                context += "- **Deal Appetite**:\n"
+                for note in appetite_notes:
+                    context += f"  - {note}\n"
+        
         # Include contact details
         contact_info = get_lender_contact(lender)
         if contact_info:

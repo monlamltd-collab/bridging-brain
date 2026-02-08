@@ -371,6 +371,46 @@
         .intensity-heavy { background: rgba(239, 68, 68, 0.2); color: var(--accent-danger); }
         .intensity-dev { background: rgba(139, 92, 246, 0.2); color: #a78bfa; }
         
+        /* Funding Model Hint */
+        .funding-model-hint {
+            display: flex;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            margin-top: 0.75rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid var(--accent-info);
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: var(--text);
+        }
+        
+        .funding-model-hint .hint-icon {
+            flex-shrink: 0;
+        }
+        
+        .funding-model-hint .hint-text {
+            line-height: 1.4;
+        }
+        
+        .funding-model-hint .model-tag {
+            display: inline-block;
+            padding: 0.1rem 0.35rem;
+            margin: 0 0.15rem;
+            background: var(--accent-info);
+            color: white;
+            border-radius: 3px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        
+        .funding-model-hint .model-tag.warning {
+            background: var(--accent-warn);
+        }
+        
+        .funding-model-hint .model-tag.success {
+            background: var(--accent);
+        }
+        
         /* METRICS BAR */
         .metrics-bar {
             display: flex;
@@ -1061,9 +1101,14 @@
             padding: 0.5rem;
             border: 1px solid var(--border);
             border-radius: 4px;
-            background: var(--bg);
+            background: var(--bg-primary);
             color: var(--text);
             font-size: 0.9rem;
+        }
+        
+        .aip-form select option {
+            background: var(--bg-primary);
+            color: var(--text);
         }
         
         .aip-form input:focus,
@@ -1354,6 +1399,11 @@
                             </div>
                         </div>
                         
+                        <div class="form-group" style="margin-top: 0.5rem;">
+                            <label class="form-label">Borrower's Cash for Works (optional)</label>
+                            <input type="text" id="input-borrower-cash" class="form-input currency" placeholder="Leave blank if funding all works via lender">
+                        </div>
+                        
                         <div class="refurb-calcs" id="refurb-calcs" style="display: none;">
                             <div class="calc-item">
                                 <div class="calc-label">Works Ratio</div>
@@ -1367,6 +1417,12 @@
                                 <div class="calc-label">LTGDV</div>
                                 <div class="calc-value" id="calc-ltgdv">0%</div>
                             </div>
+                        </div>
+                        
+                        <!-- Funding Model Hint -->
+                        <div class="funding-model-hint" id="funding-model-hint" style="display: none;">
+                            <div class="hint-icon">💡</div>
+                            <div class="hint-text" id="funding-model-hint-text"></div>
                         </div>
                     </div>
                 </div>
