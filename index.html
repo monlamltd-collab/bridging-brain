@@ -789,20 +789,50 @@
         /* CONTACT LENDER BUTTON IN CHAT */
         .contact-lender-btn {
             display: inline-block;
-            padding: 0.2rem 0.5rem;
-            margin-left: 0.3rem;
+            padding: 0.25rem 0.6rem;
+            margin-left: 0.5rem;
             border: 1px solid var(--accent);
             border-radius: 4px;
-            background: transparent;
-            color: var(--accent);
+            background: var(--accent);
+            color: var(--bg);
             font-size: 0.75rem;
+            font-weight: 500;
             cursor: pointer;
             vertical-align: middle;
         }
         
         .contact-lender-btn:hover {
-            background: var(--accent);
-            color: var(--bg);
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+        
+        /* Lender recommendation styling */
+        .lender-rec {
+            display: block;
+            margin: 1rem 0 0.5rem 0;
+            padding-bottom: 0.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .lender-rec .list-num {
+            font-weight: 700;
+            color: var(--accent);
+            margin-right: 0.25rem;
+        }
+        
+        .lender-rec strong {
+            color: var(--accent);
+            font-size: 1.05rem;
+        }
+        
+        .lender-details {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .lender-header {
+            color: var(--accent);
+            font-size: 1.1rem;
         }
         
         /* Fix message content formatting */

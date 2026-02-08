@@ -880,142 +880,230 @@ async def get_filter_options(essentials: DealEssentials):
 
 @app.post("/api/refiner-options")
 async def get_refiner_options(essentials: DealEssentials):
-    """Get dynamic refiner chips organized by category based on current deal"""
+    """Get dynamic refiner chips organized by category based on current deal and active refiners"""
     lenders = get_all_lenders()
     base_result = apply_knockouts(lenders, essentials)
     eligible = base_result['eligible']
-    base_count = len(eligible)
     
-    def count_matching(check_fn):
-        return sum(1 for l in eligible if check_fn(l))
+    # Apply active refiners to get current filtered list
+    active_refiners = set(essentials.active_refiners or [])
+    current_eligible = apply_refiners(eligible, active_refiners)
+    current_count = len(current_eligible)
     
-    # BORROWER REFINERS
-    borrower_refiners = []
+    def count_if_added(check_fn):
+        """Count how many would remain if this refiner was added to current selection"""
+        return sum(1 for l in current_eligible if check_fn(l))
     
-    # Foreign National
-    fn_count = count_matching(lambda l: 'yes' in str(l.get('can_you_lend_to_foreign_nationals', '')).lower())
-    if 0 < fn_count < base_count:
-        borrower_refiners.append({'key': 'foreign_national', 'icon': '🌍', 'label': 'Foreign National', 'remaining': fn_count})
-    
-    # Expat
-    expat_count = count_matching(lambda l: 'yes' in str(l.get('can_you_lend_to_expats', '')).lower())
-    if 0 < expat_count < base_count:
-        borrower_refiners.append({'key': 'expat', 'icon': '🛫', 'label': 'Expat', 'remaining': expat_count})
-    
-    # Adverse Credit
-    adverse_count = count_matching(lambda l: 
-        'yes' in str(l.get('heavy_recent_adverse_accepted_eg_missed_mortgage_payments_or', '')).lower() or
-        'yes' in str(l.get('bankrupcy_ivas_accepted', '')).lower()
-    )
-    if 0 < adverse_count < base_count:
-        borrower_refiners.append({'key': 'adverse_credit', 'icon': '⚠️', 'label': 'Adverse Credit', 'remaining': adverse_count})
-    
-    # Bankruptcy
-    bankruptcy_count = count_matching(lambda l: 'yes' in str(l.get('bankrupcy_ivas_accepted', '')).lower())
-    if 0 < bankruptcy_count < base_count:
-        borrower_refiners.append({'key': 'bankruptcy', 'icon': '💀', 'label': 'Bankruptcy/IVA', 'remaining': bankruptcy_count})
-    
-    # First Time Buyer
-    ftb_count = count_matching(lambda l: 'yes' in str(l.get('do_you_lend_to_first_time_buyers', '')).lower())
-    if 0 < ftb_count < base_count:
-        borrower_refiners.append({'key': 'ftb', 'icon': '🏠', 'label': 'First Time Buyer', 'remaining': ftb_count})
-    
-    # First Time Landlord  
-    ftl_count = count_matching(lambda l: 'yes' in str(l.get('do_you_lend_to_first_time_landlords', '')).lower())
-    if 0 < ftl_count < base_count:
-        borrower_refiners.append({'key': 'ftl', 'icon': '🔑', 'label': 'First Time Landlord', 'remaining': ftl_count})
-    
-    # Entity-specific refiners based on selected entity
-    entity = essentials.entity_type
-    if entity in ('trust',):
-        trust_count = count_matching(lambda l: 'yes' in str(l.get('do_you_lend_to_trusts', '')).lower())
-        if 0 < trust_count < base_count:
-            borrower_refiners.append({'key': 'trust', 'icon': '🏛️', 'label': 'Trust Lending', 'remaining': trust_count})
-    
-    if entity in ('sipp_ssas',):
-        sipp_count = count_matching(lambda l: 'yes' in str(l.get('can_you_lend_to_sipps_ssas_pensions', '')).lower())
-        if 0 < sipp_count < base_count:
-            borrower_refiners.append({'key': 'sipp', 'icon': '💼', 'label': 'SIPP/SSAS', 'remaining': sipp_count})
-    
-    if entity in ('charity',):
-        charity_count = count_matching(lambda l: 'yes' in str(l.get('do_you_lend_to_charities', '')).lower())
-        if 0 < charity_count < base_count:
-            borrower_refiners.append({'key': 'charity', 'icon': '🎁', 'label': 'Charity', 'remaining': charity_count})
-    
-    # DEAL REFINERS
-    deal_refiners = []
-    
-    # Auction - always relevant
-    auction_count = count_matching(lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside', '0')).strip() or 0) >= 2)
-    if 0 < auction_count:
-        deal_refiners.append({'key': 'auction', 'icon': '🔨', 'label': 'Auction', 'remaining': auction_count})
-    
-    # HMO
-    hmo_count = count_matching(lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_3', '0')).strip() or 0) >= 2)
-    if 0 < hmo_count:
-        deal_refiners.append({'key': 'hmo', 'icon': '🏘️', 'label': 'HMO Conversion', 'remaining': hmo_count})
-    
-    # Probate
-    probate_count = count_matching(lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_9', '0')).strip() or 0) >= 2)
-    if 0 < probate_count:
-        deal_refiners.append({'key': 'probate', 'icon': '📜', 'label': 'Probate', 'remaining': probate_count})
-    
-    # Commercial to Resi
-    c2r_count = count_matching(lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_4', '0')).strip() or 0) >= 2)
-    if 0 < c2r_count:
-        deal_refiners.append({'key': 'comm_to_resi', 'icon': '🔄', 'label': 'Comm to Resi', 'remaining': c2r_count})
-    
-    # Refurb-specific refiners
-    if essentials.is_refurb:
-        staged_count = count_matching(lambda l: 'yes' in str(l.get('do_you_also_offer_arrears_staged_funding_for_refurbishments', '')).lower())
-        if 0 < staged_count < base_count:
-            deal_refiners.append({'key': 'staged_funding', 'icon': '💸', 'label': 'Staged Funding', 'remaining': staged_count})
+    # Define all refiner checks
+    refiner_checks = {
+        # BORROWER REFINERS
+        'foreign_national': {
+            'category': 'borrower',
+            'icon': '🌍', 
+            'label': 'Foreign National',
+            'check': lambda l: 'yes' in str(l.get('can_you_lend_to_foreign_nationals', '')).lower() or 
+                              'only' in str(l.get('can_you_lend_to_foreign_nationals', '')).lower()
+        },
+        'expat': {
+            'category': 'borrower',
+            'icon': '🛫', 
+            'label': 'Expat',
+            'check': lambda l: 'yes' in str(l.get('can_you_lend_to_expats', '')).lower() or
+                              'only' in str(l.get('can_you_lend_to_expats', '')).lower()
+        },
+        'adverse_credit': {
+            'category': 'borrower',
+            'icon': '⚠️', 
+            'label': 'Adverse Credit',
+            'check': lambda l: 'yes' in str(l.get('heavy_recent_adverse_accepted_eg_missed_mortgage_payments_or', '')).lower() or
+                              'bread' in str(l.get('heavy_recent_adverse_accepted_eg_missed_mortgage_payments_or', '')).lower()
+        },
+        'bankruptcy': {
+            'category': 'borrower',
+            'icon': '💀', 
+            'label': 'Bankruptcy/IVA',
+            'check': lambda l: 'yes' in str(l.get('bankrupcy_ivas_accepted', '')).lower()
+        },
+        'ftb': {
+            'category': 'borrower',
+            'icon': '🏠', 
+            'label': 'First Time Buyer',
+            'check': lambda l: 'yes' in str(l.get('do_you_lend_to_first_time_buyers', '')).lower()
+        },
+        'ftl': {
+            'category': 'borrower',
+            'icon': '🔑', 
+            'label': 'First Time Landlord',
+            'check': lambda l: 'yes' in str(l.get('do_you_lend_to_first_time_landlords', '')).lower()
+        },
+        'non_owner_occ': {
+            'category': 'borrower',
+            'icon': '👤', 
+            'label': 'Non-Owner Occupier',
+            'check': lambda l: 'yes' in str(l.get('do_you_lend_to_non_owner_occupiers', '')).lower()
+        },
         
-        # First-time developer
-        ftd_count = count_matching(lambda l: 
-            str(l.get('minimum_borrower_experience_with_refurbs', '')).lower() in ('none', '0', 'no minimum', '')
-        )
-        if 0 < ftd_count < base_count:
-            deal_refiners.append({'key': 'first_time_dev', 'icon': '👷', 'label': 'First-Time Developer OK', 'remaining': ftd_count})
+        # DEAL REFINERS
+        'auction': {
+            'category': 'deal',
+            'icon': '🔨', 
+            'label': 'Auction',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside', '0')).strip() or 0) >= 2
+        },
+        'hmo': {
+            'category': 'deal',
+            'icon': '🏘️', 
+            'label': 'HMO Conversion',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_3', '0')).strip() or 0) >= 2
+        },
+        'probate': {
+            'category': 'deal',
+            'icon': '📜', 
+            'label': 'Probate',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_9', '0')).strip() or 0) >= 2
+        },
+        'comm_to_resi': {
+            'category': 'deal',
+            'icon': '🔄', 
+            'label': 'Comm to Resi (PD)',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_4', '0')).strip() or 0) >= 2
+        },
+        'developer_exit': {
+            'category': 'deal',
+            'icon': '🏗️', 
+            'label': 'Developer Exit',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_12', '0')).strip() or 0) >= 2
+        },
+        'fire_flood': {
+            'category': 'deal',
+            'icon': '🔥', 
+            'label': 'Fire/Flood Damaged',
+            'check': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_10', '0')).strip() or 0) >= 2
+        },
+        
+        # PRODUCT REFINERS
+        'dual_legal': {
+            'category': 'product',
+            'icon': '⚖️', 
+            'label': 'Dual Legal Rep',
+            'check': lambda l: 'yes' in str(l.get('dual_legal_rep_offered', '')).lower()
+        },
+        'serviced_interest': {
+            'category': 'product',
+            'icon': '💰', 
+            'label': 'Serviced Interest',
+            'check': lambda l: 'yes' in str(l.get('serviced_interest_allowed', '')).lower()
+        },
+        'no_exit_fee': {
+            'category': 'product',
+            'icon': '🚫', 
+            'label': 'No Exit Fee',
+            'check': lambda l: 'never' in str(l.get('do_you_charge_exit_fees', '')).lower()
+        },
+        'avm_available': {
+            'category': 'product',
+            'icon': '📊', 
+            'label': 'AVM/Desktop',
+            'check': lambda l: 'yes' in str(l.get('can_you_potentially_use_avms_and_or_desktops_for_residential', '')).lower()
+        },
+    }
     
-    # PRODUCT REFINERS
+    # Add refurb-specific refiners if refurb is selected
+    if essentials.is_refurb:
+        refiner_checks['staged_funding'] = {
+            'category': 'deal',
+            'icon': '💸', 
+            'label': 'Staged Funding',
+            'check': lambda l: 'yes' in str(l.get('do_you_also_offer_arrears_staged_funding_for_refurbishments', '')).lower()
+        }
+        refiner_checks['first_time_dev'] = {
+            'category': 'borrower',
+            'icon': '👷', 
+            'label': 'First-Time Developer OK',
+            'check': lambda l: 'none' in str(l.get('minimum_borrower_experience_with_refurbs', '')).lower() or
+                              str(l.get('minimum_borrower_experience_with_refurbs', '')).strip() == ''
+        }
+    
+    # Calculate counts for each refiner
+    borrower_refiners = []
+    deal_refiners = []
     product_refiners = []
     
-    # Speed Critical (dual legal + low min months)
-    speed_count = count_matching(lambda l: 
-        'yes' in str(l.get('dual_legal_rep_offered', '')).lower() or
-        str(l.get('minimum_number_of_months_interest', '')).strip() in ('1', '1 month')
-    )
-    if 0 < speed_count < base_count:
-        product_refiners.append({'key': 'speed', 'icon': '⚡', 'label': 'Speed Critical', 'remaining': speed_count})
-    
-    # Serviced Interest
-    serviced_count = count_matching(lambda l: 'yes' in str(l.get('serviced_interest_allowed', '')).lower())
-    if 0 < serviced_count < base_count:
-        product_refiners.append({'key': 'serviced_interest', 'icon': '💰', 'label': 'Serviced Interest', 'remaining': serviced_count})
-    
-    # Dual Legal
-    dual_count = count_matching(lambda l: 'yes' in str(l.get('dual_legal_rep_offered', '')).lower())
-    if 0 < dual_count < base_count:
-        product_refiners.append({'key': 'dual_legal', 'icon': '⚖️', 'label': 'Dual Legal Rep', 'remaining': dual_count})
-    
-    # Flexible Facility
-    flex_count = count_matching(lambda l: 'yes' in str(l.get('flexible_rotating_credit_facility_product_offered', '')).lower())
-    if 0 < flex_count < base_count:
-        product_refiners.append({'key': 'flexible', 'icon': '🔄', 'label': 'Flexible Facility', 'remaining': flex_count})
-    
-    # AVM Available (for residential)
-    if essentials.property_type == 'residential':
-        avm_count = count_matching(lambda l: 'yes' in str(l.get('can_you_potentially_use_avms_and_or_desktops_for_residential', '')).lower())
-        if 0 < avm_count < base_count:
-            product_refiners.append({'key': 'avm', 'icon': '🖥️', 'label': 'AVM/Desktop Val', 'remaining': avm_count})
+    for key, config in refiner_checks.items():
+        # If this refiner is already active, show it as selected with current count
+        if key in active_refiners:
+            remaining = current_count
+            is_active = True
+        else:
+            # Count how many would remain if this was added
+            remaining = count_if_added(config['check'])
+            is_active = False
+        
+        # Only show refiners that have some lenders (and don't show if all pass)
+        if remaining > 0 and remaining < len(eligible):
+            refiner_data = {
+                'key': key,
+                'icon': config['icon'],
+                'label': config['label'],
+                'remaining': remaining,
+                'active': is_active
+            }
+            
+            if config['category'] == 'borrower':
+                borrower_refiners.append(refiner_data)
+            elif config['category'] == 'deal':
+                deal_refiners.append(refiner_data)
+            else:
+                product_refiners.append(refiner_data)
     
     return {
-        'base_count': base_count,
+        'base_count': len(eligible),
+        'current_count': current_count,
         'borrower_refiners': borrower_refiners,
         'deal_refiners': deal_refiners,
         'product_refiners': product_refiners
     }
+
+
+def apply_refiners(eligible: List[Dict], active_refiners: set) -> List[Dict]:
+    """Apply active refiners to filter the eligible list further"""
+    if not active_refiners:
+        return eligible
+    
+    result = eligible
+    
+    refiner_checks = {
+        'foreign_national': lambda l: 'yes' in str(l.get('can_you_lend_to_foreign_nationals', '')).lower() or 
+                                      'only' in str(l.get('can_you_lend_to_foreign_nationals', '')).lower(),
+        'expat': lambda l: 'yes' in str(l.get('can_you_lend_to_expats', '')).lower() or
+                          'only' in str(l.get('can_you_lend_to_expats', '')).lower(),
+        'adverse_credit': lambda l: 'yes' in str(l.get('heavy_recent_adverse_accepted_eg_missed_mortgage_payments_or', '')).lower() or
+                                   'bread' in str(l.get('heavy_recent_adverse_accepted_eg_missed_mortgage_payments_or', '')).lower(),
+        'bankruptcy': lambda l: 'yes' in str(l.get('bankrupcy_ivas_accepted', '')).lower(),
+        'ftb': lambda l: 'yes' in str(l.get('do_you_lend_to_first_time_buyers', '')).lower(),
+        'ftl': lambda l: 'yes' in str(l.get('do_you_lend_to_first_time_landlords', '')).lower(),
+        'non_owner_occ': lambda l: 'yes' in str(l.get('do_you_lend_to_non_owner_occupiers', '')).lower(),
+        'auction': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside', '0')).strip() or 0) >= 2,
+        'hmo': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_3', '0')).strip() or 0) >= 2,
+        'probate': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_9', '0')).strip() or 0) >= 2,
+        'comm_to_resi': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_4', '0')).strip() or 0) >= 2,
+        'developer_exit': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_12', '0')).strip() or 0) >= 2,
+        'fire_flood': lambda l: int(str(l.get('deal_appetite_0_won_t_consider_1_low_appetite_2_will_conside_10', '0')).strip() or 0) >= 2,
+        'dual_legal': lambda l: 'yes' in str(l.get('dual_legal_rep_offered', '')).lower(),
+        'serviced_interest': lambda l: 'yes' in str(l.get('serviced_interest_allowed', '')).lower(),
+        'no_exit_fee': lambda l: 'never' in str(l.get('do_you_charge_exit_fees', '')).lower(),
+        'avm_available': lambda l: 'yes' in str(l.get('can_you_potentially_use_avms_and_or_desktops_for_residential', '')).lower(),
+        'staged_funding': lambda l: 'yes' in str(l.get('do_you_also_offer_arrears_staged_funding_for_refurbishments', '')).lower(),
+        'first_time_dev': lambda l: 'none' in str(l.get('minimum_borrower_experience_with_refurbs', '')).lower() or
+                                    str(l.get('minimum_borrower_experience_with_refurbs', '')).strip() == '',
+    }
+    
+    for refiner_key in active_refiners:
+        if refiner_key in refiner_checks:
+            result = [l for l in result if refiner_checks[refiner_key](l)]
+    
+    return result
+
 
 @app.post("/api/chat")
 async def chat(message: ChatMessage):

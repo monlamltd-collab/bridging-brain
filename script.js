@@ -339,15 +339,25 @@ async function updateLiveLenderCount() {
             });
             
             const data = await response.json();
-            const count = data.summary?.eligible || data.eligible?.length || 0;
-            currentLenderCount = count;
+            const baseCount = data.summary?.eligible || data.eligible?.length || 0;
             
-            countEl.textContent = count;
+            // Now get refiner options which will apply active refiners
+            const refinerResponse = await fetch('/api/refiner-options', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(essentials)
+            });
+            
+            const refinerData = await refinerResponse.json();
+            const currentCount = refinerData.current_count ?? baseCount;
+            currentLenderCount = currentCount;
+            
+            countEl.textContent = currentCount;
             
             // Update badge color
-            if (count === 0) {
+            if (currentCount === 0) {
                 badge.className = 'lender-count-badge none';
-            } else if (count <= 5) {
+            } else if (currentCount <= 5) {
                 badge.className = 'lender-count-badge few';
             } else {
                 badge.className = 'lender-count-badge';
@@ -360,14 +370,19 @@ async function updateLiveLenderCount() {
             displaySecurityHints(data.security_hints);
             
             // Show auto-prompt if we have matches and no chat yet
-            if (count > 0 && chatMessages.length === 0) {
+            if (currentCount > 0 && chatMessages.length === 0) {
                 welcomeState.style.display = 'none';
                 autoPromptState.style.display = 'flex';
-                document.getElementById('auto-prompt-count').textContent = count;
-                updateRefinerChips(essentials);
+                document.getElementById('auto-prompt-count').textContent = currentCount;
+                
+                // Update refiner chips with new data
+                updateRefinerChipsWithData(refinerData);
             } else if (chatMessages.length === 0) {
                 welcomeState.style.display = 'flex';
                 autoPromptState.style.display = 'none';
+            } else if (currentCount > 0) {
+                // Chat is active, but still update the count
+                document.getElementById('auto-prompt-count').textContent = currentCount;
             }
             
         } catch (error) {
@@ -463,29 +478,7 @@ async function updateRefinerChips(essentials) {
         });
         
         const data = await response.json();
-        
-        // Populate borrower refiners
-        const borrowerChips = document.getElementById('refiner-chips-borrower');
-        borrowerChips.innerHTML = (data.borrower_refiners || []).map(r => 
-            renderRefinerChip(r)
-        ).join('');
-        
-        // Populate deal refiners
-        const dealChips = document.getElementById('refiner-chips-deal');
-        dealChips.innerHTML = (data.deal_refiners || []).map(r => 
-            renderRefinerChip(r)
-        ).join('');
-        
-        // Populate product refiners
-        const productChips = document.getElementById('refiner-chips-product');
-        productChips.innerHTML = (data.product_refiners || []).map(r => 
-            renderRefinerChip(r)
-        ).join('');
-        
-        // Add click handlers
-        document.querySelectorAll('.refiner-chip').forEach(chip => {
-            chip.addEventListener('click', () => toggleRefinerChip(chip));
-        });
+        updateRefinerChipsWithData(data);
         
     } catch (error) {
         console.error('Failed to get refiner options:', error);
@@ -494,8 +487,33 @@ async function updateRefinerChips(essentials) {
     }
 }
 
+function updateRefinerChipsWithData(data) {
+    // Populate borrower refiners
+    const borrowerChips = document.getElementById('refiner-chips-borrower');
+    borrowerChips.innerHTML = (data.borrower_refiners || []).map(r => 
+        renderRefinerChip(r)
+    ).join('');
+    
+    // Populate deal refiners
+    const dealChips = document.getElementById('refiner-chips-deal');
+    dealChips.innerHTML = (data.deal_refiners || []).map(r => 
+        renderRefinerChip(r)
+    ).join('');
+    
+    // Populate product refiners
+    const productChips = document.getElementById('refiner-chips-product');
+    productChips.innerHTML = (data.product_refiners || []).map(r => 
+        renderRefinerChip(r)
+    ).join('');
+    
+    // Add click handlers
+    document.querySelectorAll('.refiner-chip').forEach(chip => {
+        chip.addEventListener('click', () => toggleRefinerChip(chip));
+    });
+}
+
 function renderRefinerChip(refiner) {
-    const isActive = activeRefiners.has(refiner.key);
+    const isActive = refiner.active || activeRefiners.has(refiner.key);
     return `
         <div class="refiner-chip ${isActive ? 'active' : ''}" data-refiner="${refiner.key}">
             <span class="chip-icon">${refiner.icon}</span>
@@ -543,6 +561,9 @@ function toggleRefinerChip(chip) {
         activeRefiners.add(key);
         chip.classList.add('active');
     }
+    
+    // Re-fetch the lender count and refiner options with new active refiners
+    updateLiveLenderCount();
 }
 
 // ============================================================================
@@ -698,41 +719,37 @@ function formatMessageContent(content) {
     // First convert **bold** to <strong>
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
-    // List of known lender names/patterns for matching
-    const lenderKeywords = /(?:Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group|Holdings|Lendhub|Glenhawk|Avamore|Octane|Precise|Aspen|Castle|Catalyst|Bluecroft|Blackfinch|Albatross|Alternative|Bricks|Cohort|Colenko|Finanze|Magnet|Maslow|Mint|Oblix|Ortus|Paragon|Proplend|Roma|Sancus|Together|United|West\s*One|MT\s*Finance|Hope|Kuflink|Atelier|Signature|Tuscan|CHL|Investec|Shawbrook|Allica|Dudley|UTB|Redwood|Market|Quantum|Interbridge|Zorin)/i;
-    
-    // Pattern 1: "1. **Lender Name**" 
+    // Pattern 1: "1. **Lender Name**" (bold format)
     html = html.replace(/(\d+)\.\s*<strong>([^<]+)<\/strong>/g, (match, num, lenderName) => {
         const cleanName = lenderName.trim().replace(/:$/, '');
-        return `<span class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></span>`;
+        return `<div class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></div>`;
     });
     
-    // Pattern 2: "1. Lender Name -" or "1. Lender Name:" (plain text, not bold)
-    html = html.replace(/(\d+)\.\s+([A-Z][A-Za-z0-9\s&\-']+?)\s*[-–:]/g, (match, num, lenderName) => {
+    // Pattern 2: "1. Lender Name -" or "2. Lender Name -" (plain text followed by dash)
+    // This catches formats like "1. Castle Trust Bank - Rate 0.75..."
+    html = html.replace(/^(\d+)\.\s+([A-Z][A-Za-z0-9\s&\-']+?)\s+-\s+/gm, (match, num, lenderName) => {
         const cleanName = lenderName.trim();
-        if (lenderKeywords.test(cleanName)) {
-            return `<span class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button> -`;
-        }
-        return match;
+        return `<div class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></div><div class="lender-details">`;
     });
     
-    // Pattern 3: "## Best for X: Lender Name" or "## Lender Name"
-    html = html.replace(/##\s*(?:Best[^:]*:\s*)?([A-Z][A-Za-z0-9\s&\-']+?)(?:\s*[-–:]|\s*$)/gm, (match, lenderName) => {
+    // Close lender-details divs at next numbered item or end
+    html = html.replace(/<\/div><div class="lender-details">([^]*?)(?=<div class="lender-rec">|$)/g, '</div><div class="lender-details">$1</div>');
+    
+    // Pattern 3: "## Best for X: Lender Name" headers
+    html = html.replace(/##\s*Best[^:]*:\s*([A-Za-z][A-Za-z0-9\s&\-']+)/g, (match, lenderName) => {
         const cleanName = lenderName.trim();
-        if (lenderKeywords.test(cleanName)) {
-            return `<strong class="lender-header">${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button> `;
-        }
-        return `<strong>${cleanName}</strong>`;
+        return `<div class="lender-rec"><strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></div>`;
     });
     
-    // Handle remaining ## headers (not lenders)
+    // Handle remaining ## headers
     html = html.replace(/##\s+(.+)/g, '<strong>$1</strong>');
     
     // Handle remaining numbered lists (not already processed)
     html = html.replace(/^(\d+)\.\s+(?!<)/gm, '<span class="list-num">$1.</span> ');
     
     // Handle bullet points  
-    html = html.replace(/^[-•]\s+/gm, '• ');
+    html = html.replace(/^[•]\s*/gm, '<span class="bullet">•</span> ');
+    html = html.replace(/\n[•]\s*/g, '<br><span class="bullet">•</span> ');
     
     // Convert double newlines to paragraph breaks
     html = html.replace(/\n\n/g, '</p><p>');
@@ -743,10 +760,12 @@ function formatMessageContent(content) {
     // Wrap in paragraph
     html = '<p>' + html + '</p>';
     
-    // Clean up empty paragraphs and formatting issues
+    // Clean up
     html = html.replace(/<p><\/p>/g, '');
     html = html.replace(/<p><br>/g, '<p>');
     html = html.replace(/<br><br>/g, '<br>');
+    html = html.replace(/<p><div/g, '<div');
+    html = html.replace(/<\/div><\/p>/g, '</div>');
     
     return html;
 }
