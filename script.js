@@ -693,33 +693,38 @@ function addMessage(role, content) {
 }
 
 function formatMessageContent(content) {
-    // Convert markdown-like formatting to HTML
-    let html = content
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\n\n/g, '</p><p>')
-        .replace(/\n- /g, '</p><ul><li>')
-        .replace(/\n/g, '<br>');
+    // First, escape any HTML
+    let html = content;
+    
+    // Convert **bold** to <strong>
+    html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    
+    // Handle numbered lists (1. 2. 3.)
+    html = html.replace(/^(\d+)\.\s+/gm, '<br><span class="list-num">$1.</span> ');
+    
+    // Handle bullet points
+    html = html.replace(/^[-•]\s+/gm, '<br>• ');
+    
+    // Convert double newlines to paragraph breaks
+    html = html.replace(/\n\n/g, '</p><p>');
+    
+    // Convert single newlines to line breaks
+    html = html.replace(/\n/g, '<br>');
     
     // Wrap in paragraph
     html = '<p>' + html + '</p>';
     
-    // Fix list formatting
-    html = html.replace(/<\/p><ul>/g, '</p><ul>');
-    html = html.replace(/<li>(.*?)<br>/g, '<li>$1</li>');
+    // Clean up empty paragraphs
+    html = html.replace(/<p><\/p>/g, '');
+    html = html.replace(/<p><br>/g, '<p>');
     
-    // Add contact buttons for lender names mentioned
-    // Look for patterns like "1. **Lender Name**" or "**Lender Name:**"
-    html = html.replace(/<strong>([A-Za-z][A-Za-z0-9\s&\-']+(?:Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group|Holdings)?)<\/strong>/g, 
-        (match, lenderName) => {
-            // Clean up lender name
-            const cleanName = lenderName.trim().replace(/:$/, '');
-            // Only add button if it looks like a lender name (has capital letter, multiple words, or common suffixes)
-            if (cleanName.length > 3 && (cleanName.includes(' ') || /Capital|Finance|Bank|Trust|Lending|Bridge|Mortgages|Property|Ltd|Group/i.test(cleanName))) {
-                return `<strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button>`;
-            }
-            return match;
-        }
-    );
+    // Add contact buttons for lender names - only for recommendations
+    // Look for patterns like "1. **Lender Name**" or numbered recommendations
+    const lenderPattern = /<span class="list-num">(\d+)\.<\/span>\s*<strong>([^<]+)<\/strong>/g;
+    html = html.replace(lenderPattern, (match, num, lenderName) => {
+        const cleanName = lenderName.trim().replace(/:$/, '');
+        return `<span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button>`;
+    });
     
     return html;
 }
@@ -906,11 +911,25 @@ function openContactModal(lenderName) {
     
     // Fetch contact details
     fetch(`/api/lender/${encodeURIComponent(lenderName)}/contact`)
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}`);
+            }
+            return res.json();
+        })
         .then(data => {
-            document.getElementById('contact-bdm-name').textContent = data.contact?.bdm_name || 'New Business Team';
-            document.getElementById('contact-email').textContent = data.contact?.email || 'Email not available';
-            document.getElementById('contact-phone').textContent = data.contact?.phone || 'Phone not available';
+            console.log('Contact data received:', data);
+            
+            const contact = data.contact || {};
+            const bdmName = contact.bdm_name || 'New Business Team';
+            const email = contact.email || contact.bdm_email || '';
+            const phone = contact.phone || contact.bdm_mobile || '';
+            
+            document.getElementById('contact-bdm-name').textContent = bdmName;
+            document.getElementById('contact-email').innerHTML = email ? 
+                `📧 <a href="mailto:${email}">${email}</a>` : 'Email not available';
+            document.getElementById('contact-phone').innerHTML = phone ? 
+                `📞 ${phone}` : 'Phone not available';
             
             // Show refurb section if deal is refurb
             const essentials = getDealEssentials();
@@ -927,7 +946,12 @@ function openContactModal(lenderName) {
         })
         .catch(err => {
             console.error('Failed to fetch contact details:', err);
-            alert('Failed to load contact details');
+            // Still open modal with basic info
+            document.getElementById('contact-bdm-name').textContent = 'New Business Team';
+            document.getElementById('contact-email').textContent = 'Contact details not available';
+            document.getElementById('contact-phone').textContent = '';
+            showContactStep1();
+            modal.style.display = 'flex';
         });
 }
 
