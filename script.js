@@ -698,22 +698,29 @@ function formatMessageContent(content) {
     // First convert **bold** to <strong>
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
-    // Add contact buttons for numbered lender recommendations
-    // Pattern: "1. **Lender Name**" 
+    // List of known lender names/patterns for matching
+    const lenderKeywords = /(?:Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group|Holdings|Lendhub|Glenhawk|Avamore|Octane|Precise|Aspen|Castle|Catalyst|Bluecroft|Blackfinch|Albatross|Alternative|Bricks|Cohort|Colenko|Finanze|Magnet|Maslow|Mint|Oblix|Ortus|Paragon|Proplend|Roma|Sancus|Together|United|West\s*One|MT\s*Finance|Hope|Kuflink|Atelier|Signature|Tuscan|CHL|Investec|Shawbrook|Allica|Dudley|UTB|Redwood|Market|Quantum|Interbridge|Zorin)/i;
+    
+    // Pattern 1: "1. **Lender Name**" 
     html = html.replace(/(\d+)\.\s*<strong>([^<]+)<\/strong>/g, (match, num, lenderName) => {
         const cleanName = lenderName.trim().replace(/:$/, '');
-        if (cleanName.length > 5 && (cleanName.includes(' ') || /Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group/i.test(cleanName))) {
-            return `<span class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></span>`;
-        }
-        return `<span class="list-num">${num}.</span> <strong>${cleanName}</strong>`;
+        return `<span class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button></span>`;
     });
     
-    // Add contact buttons for ## Header style lender recommendations
-    // Pattern: "## Best for X: Lender Name" or "## Lender Name"
-    html = html.replace(/##\s*(?:Best[^:]*:\s*)?([A-Z][A-Za-z0-9\s&\-']+(?:Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group|Holdings)?)\b/g, (match, lenderName) => {
-        const cleanName = lenderName.trim().replace(/:$/, '');
-        if (cleanName.length > 5 && (cleanName.includes(' ') || /Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group/i.test(cleanName))) {
-            return `<strong class="lender-header">${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button>`;
+    // Pattern 2: "1. Lender Name -" or "1. Lender Name:" (plain text, not bold)
+    html = html.replace(/(\d+)\.\s+([A-Z][A-Za-z0-9\s&\-']+?)\s*[-–:]/g, (match, num, lenderName) => {
+        const cleanName = lenderName.trim();
+        if (lenderKeywords.test(cleanName)) {
+            return `<span class="lender-rec"><span class="list-num">${num}.</span> <strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button> -`;
+        }
+        return match;
+    });
+    
+    // Pattern 3: "## Best for X: Lender Name" or "## Lender Name"
+    html = html.replace(/##\s*(?:Best[^:]*:\s*)?([A-Z][A-Za-z0-9\s&\-']+?)(?:\s*[-–:]|\s*$)/gm, (match, lenderName) => {
+        const cleanName = lenderName.trim();
+        if (lenderKeywords.test(cleanName)) {
+            return `<strong class="lender-header">${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button> `;
         }
         return `<strong>${cleanName}</strong>`;
     });
