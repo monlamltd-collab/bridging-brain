@@ -707,6 +707,20 @@ function formatMessageContent(content) {
     html = html.replace(/<\/p><ul>/g, '</p><ul>');
     html = html.replace(/<li>(.*?)<br>/g, '<li>$1</li>');
     
+    // Add contact buttons for lender names mentioned
+    // Look for patterns like "1. **Lender Name**" or "**Lender Name:**"
+    html = html.replace(/<strong>([A-Za-z][A-Za-z0-9\s&\-']+(?:Capital|Finance|Bank|Trust|Lending|Bridge|Bridging|Mortgages|Property|Ltd|Group|Holdings)?)<\/strong>/g, 
+        (match, lenderName) => {
+            // Clean up lender name
+            const cleanName = lenderName.trim().replace(/:$/, '');
+            // Only add button if it looks like a lender name (has capital letter, multiple words, or common suffixes)
+            if (cleanName.length > 3 && (cleanName.includes(' ') || /Capital|Finance|Bank|Trust|Lending|Bridge|Mortgages|Property|Ltd|Group/i.test(cleanName))) {
+                return `<strong>${cleanName}</strong> <button class="contact-lender-btn" onclick="openContactModal('${cleanName.replace(/'/g, "\\'")}')">📞 Contact</button>`;
+            }
+            return match;
+        }
+    );
+    
     return html;
 }
 
@@ -875,4 +889,169 @@ document.addEventListener('DOMContentLoaded', () => {
     updateMetrics();
     
     console.log('Bridging Brain v4 initialized');
+});
+
+// ============================================================================
+// CONTACT LENDER MODAL
+// ============================================================================
+
+let currentContactLender = null;
+
+function openContactModal(lenderName) {
+    currentContactLender = lenderName;
+    const modal = document.getElementById('contact-modal');
+    const title = document.getElementById('contact-modal-title');
+    
+    title.textContent = `Contact ${lenderName}`;
+    
+    // Fetch contact details
+    fetch(`/api/lender/${encodeURIComponent(lenderName)}/contact`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('contact-bdm-name').textContent = data.contact?.bdm_name || 'New Business Team';
+            document.getElementById('contact-email').textContent = data.contact?.email || 'Email not available';
+            document.getElementById('contact-phone').textContent = data.contact?.phone || 'Phone not available';
+            
+            // Show refurb section if deal is refurb
+            const essentials = getDealEssentials();
+            const refurbSection = document.getElementById('aip-refurb-section');
+            if (essentials && essentials.is_refurb) {
+                refurbSection.style.display = 'block';
+            } else {
+                refurbSection.style.display = 'none';
+            }
+            
+            // Reset to step 1
+            showContactStep1();
+            modal.style.display = 'flex';
+        })
+        .catch(err => {
+            console.error('Failed to fetch contact details:', err);
+            alert('Failed to load contact details');
+        });
+}
+
+function closeContactModal() {
+    document.getElementById('contact-modal').style.display = 'none';
+    currentContactLender = null;
+}
+
+function showContactStep1() {
+    document.getElementById('contact-step-1').style.display = 'block';
+    document.getElementById('contact-step-2').style.display = 'none';
+    document.getElementById('contact-step-3').style.display = 'none';
+}
+
+function contactOwnWay() {
+    // Just close the modal - they have the contact details
+    closeContactModal();
+}
+
+function showAIPForm() {
+    document.getElementById('contact-step-1').style.display = 'none';
+    document.getElementById('contact-step-2').style.display = 'block';
+    document.getElementById('contact-step-3').style.display = 'none';
+}
+
+function getAIPDetails() {
+    return {
+        borrower_name: document.getElementById('aip-borrower-name').value || null,
+        borrower_type: document.getElementById('aip-borrower-type').value || null,
+        is_homeowner: document.getElementById('aip-homeowner').value === 'yes' ? true : 
+                      document.getElementById('aip-homeowner').value === 'no' ? false : null,
+        assets_liabilities: document.getElementById('aip-al-position').value || null,
+        property_address: document.getElementById('aip-property-address').value || null,
+        additional_security_address: document.getElementById('aip-additional-security').value || null,
+        refurb_experience: document.getElementById('aip-experience').value || null,
+        gdv_estimate: document.getElementById('aip-gdv').value || null,
+        works_schedule: document.getElementById('aip-works-schedule').value || null,
+        exit_strategy: document.getElementById('aip-exit-strategy').value || null,
+        exit_timeframe: document.getElementById('aip-timeframe').value || null,
+        urgency: document.getElementById('aip-urgency').value || null,
+        additional_notes: document.getElementById('aip-notes').value || null
+    };
+}
+
+async function generateDealPresentation() {
+    const essentials = getDealEssentials();
+    const aipDetails = getAIPDetails();
+    
+    try {
+        const response = await fetch('/api/contact-lender', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                lender_name: currentContactLender,
+                deal_essentials: essentials,
+                aip_details: aipDetails,
+                generate_email: true
+            })
+        });
+        
+        const data = await response.json();
+        
+        // Show validation result
+        const validationDiv = document.getElementById('validation-result');
+        if (data.still_fits) {
+            validationDiv.innerHTML = `
+                <div class="validation-success">
+                    ✅ <strong>Confirmed:</strong> Based on the details provided, this deal appears to fit ${currentContactLender}'s criteria.
+                </div>
+            `;
+        } else {
+            let warningsHtml = data.warnings.map(w => `<li>${w}</li>`).join('');
+            let alternativesHtml = '';
+            if (data.alternative_suggestions && data.alternative_suggestions.length > 0) {
+                alternativesHtml = `
+                    <div class="alternatives">
+                        <strong>You might also consider:</strong>
+                        <ul>
+                            ${data.alternative_suggestions.map(a => `<li><strong>${a.name}</strong> - ${a.reason}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            validationDiv.innerHTML = `
+                <div class="validation-warning">
+                    <div class="warning-title">⚠️ Heads up - some details may affect this lender's appetite:</div>
+                    <ul class="warning-list">${warningsHtml}</ul>
+                    ${alternativesHtml}
+                </div>
+            `;
+        }
+        
+        // Show email template
+        document.getElementById('email-template').textContent = data.email_template;
+        
+        // Show step 3
+        document.getElementById('contact-step-1').style.display = 'none';
+        document.getElementById('contact-step-2').style.display = 'none';
+        document.getElementById('contact-step-3').style.display = 'block';
+        
+    } catch (err) {
+        console.error('Failed to generate deal presentation:', err);
+        alert('Failed to generate deal presentation. Please try again.');
+    }
+}
+
+function copyEmailTemplate() {
+    const template = document.getElementById('email-template').textContent;
+    navigator.clipboard.writeText(template).then(() => {
+        const btn = document.querySelector('.btn-copy');
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => {
+            btn.textContent = '📋 Copy to Clipboard';
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy to clipboard');
+    });
+}
+
+// Close modal when clicking outside
+document.addEventListener('click', (e) => {
+    const modal = document.getElementById('contact-modal');
+    if (e.target === modal) {
+        closeContactModal();
+    }
 });

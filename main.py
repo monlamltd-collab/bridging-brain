@@ -91,6 +91,42 @@ class FeedbackSubmission(BaseModel):
     rating: int  # 1-5
     feedback_text: Optional[str] = None
 
+
+class AIPDetails(BaseModel):
+    """Details for AIP/Deal Presentation"""
+    # Borrower info
+    borrower_name: Optional[str] = None
+    borrower_type: Optional[str] = None  # individual, company, partnership, trust
+    is_homeowner: Optional[bool] = None
+    assets_liabilities: Optional[str] = None  # brief A&L position
+    
+    # Property info
+    property_address: Optional[str] = None
+    additional_security_address: Optional[str] = None
+    
+    # Experience (for refurb)
+    refurb_experience: Optional[str] = None  # none, 1-2, 3-5, 5+
+    
+    # Works (for refurb)
+    works_schedule: Optional[str] = None  # brief description
+    gdv_estimate: Optional[str] = None  # range e.g. "£450k-£500k"
+    
+    # Exit
+    exit_strategy: Optional[str] = None  # sale, refinance, other
+    exit_timeframe: Optional[str] = None  # e.g. "6-9 months"
+    
+    # Other
+    additional_notes: Optional[str] = None
+    urgency: Optional[str] = None  # e.g. "auction 28 days", "no rush"
+
+
+class ContactLenderRequest(BaseModel):
+    """Request to contact a lender"""
+    lender_name: str
+    deal_essentials: DealEssentials
+    aip_details: Optional[AIPDetails] = None
+    generate_email: bool = False
+
 # ============================================================================
 # DATABASE FUNCTIONS
 # ============================================================================
@@ -628,9 +664,40 @@ def build_lender_context(eligible_lenders: List[Dict], excluded_count: int, summ
                     context += f"- Notes: {str(notes)[:500]}\n"
                 break
         
+        # Include contact details
+        contact_info = get_lender_contact(lender)
+        if contact_info:
+            context += f"- **Contact**: {contact_info['bdm_name']} | {contact_info['email']} | {contact_info['phone']}\n"
+        
         context += "\n"
     
     return context
+
+
+def get_lender_contact(lender: Dict) -> Dict:
+    """Extract contact details from lender record"""
+    contact = {
+        'bdm_name': lender.get('south_west_bdm_name', ''),
+        'bdm_email': lender.get('south_west_bdm_email_address', ''),
+        'bdm_mobile': lender.get('south_west_bdm_mobile_number', ''),
+        'email': lender.get('email_address_for_new_enquiries', ''),
+        'phone': lender.get('central_number_for_new_enquiries', ''),
+    }
+    
+    # Clean up empty/nan values
+    for key in contact:
+        if not contact[key] or str(contact[key]).lower() in ('nan', 'none', ''):
+            contact[key] = ''
+    
+    # Use BDM details if available, otherwise general
+    if not contact['email']:
+        contact['email'] = contact['bdm_email']
+    if not contact['phone']:
+        contact['phone'] = contact['bdm_mobile']
+    if not contact['bdm_name']:
+        contact['bdm_name'] = 'New Business Team'
+    
+    return contact if contact['email'] or contact['phone'] else None
 
 def chat_with_ai(session_id: str, user_message: str, deal_essentials: Optional[DealEssentials] = None) -> str:
     """Send message to AI and get response"""
@@ -1001,6 +1068,223 @@ async def get_feedback(lender: str = None):
 async def get_themes():
     """Get available UI themes"""
     return {"themes": THEMES}
+
+
+@app.get("/api/lender/{lender_name}/contact")
+async def get_lender_contact_details(lender_name: str):
+    """Get contact details for a specific lender"""
+    lenders = get_all_lenders()
+    lender = next((l for l in lenders if l['name'].lower() == lender_name.lower()), None)
+    
+    if not lender:
+        # Try partial match
+        lender = next((l for l in lenders if lender_name.lower() in l['name'].lower()), None)
+    
+    if not lender:
+        raise HTTPException(status_code=404, detail="Lender not found")
+    
+    contact = get_lender_contact(lender)
+    return {
+        "lender_name": lender['name'],
+        "contact": contact,
+        "funding_model": lender.get('funding_model', ''),
+        "typical_proc_fee": lender.get('typical_proc_fee', ''),
+        "rate_band": lender.get('approximate_interest_rate_band', ''),
+    }
+
+
+@app.post("/api/contact-lender")
+async def contact_lender(request: ContactLenderRequest):
+    """
+    Handle contact lender request.
+    If generate_email=True and aip_details provided, generates deal presentation email.
+    Also re-validates the deal with any new information.
+    """
+    lenders = get_all_lenders()
+    lender = next((l for l in lenders if l['name'].lower() == request.lender_name.lower()), None)
+    
+    if not lender:
+        lender = next((l for l in lenders if request.lender_name.lower() in l['name'].lower()), None)
+    
+    if not lender:
+        raise HTTPException(status_code=404, detail="Lender not found")
+    
+    contact = get_lender_contact(lender)
+    
+    result = {
+        "lender_name": lender['name'],
+        "contact": contact,
+        "still_fits": True,
+        "warnings": [],
+        "alternative_suggestions": [],
+        "email_template": None
+    }
+    
+    # Re-validate with any new information from AIP details
+    if request.aip_details:
+        validation = revalidate_with_aip_details(lender, request.deal_essentials, request.aip_details, lenders)
+        result["still_fits"] = validation["still_fits"]
+        result["warnings"] = validation["warnings"]
+        result["alternative_suggestions"] = validation["alternative_suggestions"]
+    
+    # Generate email if requested
+    if request.generate_email and request.aip_details:
+        result["email_template"] = generate_deal_presentation_email(
+            lender, 
+            request.deal_essentials, 
+            request.aip_details,
+            contact
+        )
+    
+    return result
+
+
+def revalidate_with_aip_details(lender: Dict, essentials: DealEssentials, aip: AIPDetails, all_lenders: List[Dict]) -> Dict:
+    """
+    Re-validate deal against lender criteria with additional AIP details.
+    Returns warnings and alternative suggestions if the new info changes things.
+    """
+    warnings = []
+    alternatives = []
+    still_fits = True
+    
+    # Check experience requirements for refurb
+    if essentials.is_refurb and aip.refurb_experience:
+        min_exp = str(lender.get('minimum_borrower_experience_with_refurbs', '')).lower()
+        user_exp = aip.refurb_experience.lower()
+        
+        if 'none' in user_exp or '0' in user_exp or 'first' in user_exp:
+            if '2+' in min_exp or '3+' in min_exp:
+                warnings.append(f"{lender['name']} requires {min_exp} projects experience for refurb")
+                still_fits = False
+                # Find alternatives that accept first-timers
+                for alt in all_lenders:
+                    alt_exp = str(alt.get('minimum_borrower_experience_with_refurbs', '')).lower()
+                    if 'none' in alt_exp or '0' in alt_exp or alt_exp == '':
+                        if alt['name'] != lender['name']:
+                            alternatives.append({
+                                'name': alt['name'],
+                                'reason': 'Accepts first-time developers'
+                            })
+                            if len(alternatives) >= 3:
+                                break
+    
+    # Check if they need speed and lender is slow
+    if aip.urgency and ('auction' in aip.urgency.lower() or '28' in aip.urgency or 'urgent' in aip.urgency.lower()):
+        dual_legal = str(lender.get('dual_legal_rep_offered', '')).lower()
+        if 'no' in dual_legal:
+            warnings.append(f"{lender['name']} doesn't offer dual legal rep - may be slower for auction")
+    
+    # Check homeowner status for regulated
+    if essentials.is_regulated and aip.is_homeowner == False:
+        non_owner = str(lender.get('do_you_lend_to_non_owner_occupiers', '')).lower()
+        if 'no' in non_owner:
+            warnings.append(f"{lender['name']} may not lend to non-owner occupiers on regulated deals")
+            still_fits = False
+    
+    # Check A&L position
+    if aip.assets_liabilities and ('nil' in aip.assets_liabilities.lower() or 'negative' in aip.assets_liabilities.lower()):
+        nil_al = str(lender.get('do_you_lend_to_applicants_with_a_nil_or_negative_a_l_profile', '')).lower()
+        if 'no' in nil_al:
+            warnings.append(f"{lender['name']} doesn't accept nil/negative A&L profiles")
+            still_fits = False
+    
+    return {
+        "still_fits": still_fits,
+        "warnings": warnings,
+        "alternative_suggestions": alternatives[:3]  # Max 3 alternatives
+    }
+
+
+def generate_deal_presentation_email(lender: Dict, essentials: DealEssentials, aip: AIPDetails, contact: Dict) -> str:
+    """Generate a deal presentation email for the broker to copy/paste"""
+    
+    # Calculate LTV
+    ltv = (essentials.loan_amount / essentials.market_value * 100) if essentials.market_value > 0 else 0
+    
+    email = f"""Subject: New Bridging Enquiry - {aip.property_address or 'Property TBC'}
+
+Dear {contact.get('bdm_name', 'New Business Team')},
+
+I have a bridging enquiry I'd like to discuss with you:
+
+**LOAN DETAILS**
+- Loan Amount: £{essentials.loan_amount:,.0f}
+- Property Value: £{essentials.market_value:,.0f}
+- LTV: {ltv:.1f}%
+- Property Type: {essentials.property_type.replace('_', ' ').title()}
+- Transaction: {essentials.transaction_type.title()}
+"""
+
+    if essentials.is_regulated:
+        email += "- Regulated: Yes (owner-occupied)\n"
+    
+    if essentials.is_refurb:
+        email += f"- Refurbishment: Yes\n"
+        if essentials.cost_of_works:
+            email += f"- Works Budget: £{essentials.cost_of_works:,.0f}\n"
+        if aip.gdv_estimate:
+            email += f"- Estimated GDV: {aip.gdv_estimate}\n"
+
+    email += f"""
+**BORROWER**
+- Name: {aip.borrower_name or 'TBC'}
+- Type: {(aip.borrower_type or essentials.entity_type).replace('_', ' ').title()}
+"""
+
+    if aip.is_homeowner is not None:
+        email += f"- Homeowner: {'Yes' if aip.is_homeowner else 'No'}\n"
+    
+    if aip.assets_liabilities:
+        email += f"- A&L Position: {aip.assets_liabilities}\n"
+
+    if aip.property_address:
+        email += f"""
+**PROPERTY**
+- Address: {aip.property_address}
+"""
+    
+    if aip.additional_security_address:
+        email += f"- Additional Security: {aip.additional_security_address}\n"
+
+    if essentials.is_refurb:
+        email += f"""
+**REFURBISHMENT DETAILS**
+"""
+        if aip.refurb_experience:
+            email += f"- Developer Experience: {aip.refurb_experience}\n"
+        if aip.works_schedule:
+            email += f"- Works Schedule: {aip.works_schedule}\n"
+
+    email += f"""
+**EXIT STRATEGY**
+- Strategy: {aip.exit_strategy or 'TBC'}
+"""
+    if aip.exit_timeframe:
+        email += f"- Timeframe: {aip.exit_timeframe}\n"
+
+    if aip.urgency:
+        email += f"""
+**TIMING**
+- Urgency: {aip.urgency}
+"""
+
+    if aip.additional_notes:
+        email += f"""
+**ADDITIONAL NOTES**
+{aip.additional_notes}
+"""
+
+    email += """
+Please let me know if this is something you can support in principle, and any further information you need.
+
+Best regards,
+[Your name]
+[Your company]
+[Phone/Email]
+"""
+    
+    return email
 
 # ============================================================================
 # MAIN

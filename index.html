@@ -785,6 +785,314 @@
         .security-hints .hint-text {
             color: var(--text-muted);
         }
+        
+        /* CONTACT LENDER BUTTON IN CHAT */
+        .contact-lender-btn {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            margin-left: 0.3rem;
+            border: 1px solid var(--accent);
+            border-radius: 4px;
+            background: transparent;
+            color: var(--accent);
+            font-size: 0.75rem;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        
+        .contact-lender-btn:hover {
+            background: var(--accent);
+            color: var(--bg);
+        }
+        
+        /* CONTACT MODAL */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: var(--bg-card);
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg-card);
+            z-index: 10;
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            color: var(--accent);
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+        
+        .modal-close:hover {
+            color: var(--text);
+        }
+        
+        .modal-step {
+            padding: 1.5rem;
+        }
+        
+        .contact-details-box {
+            background: var(--bg);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .contact-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+        
+        .contact-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+        
+        .modal-question {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .contact-choice-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        
+        .btn-choice {
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 1rem;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s;
+        }
+        
+        .btn-choice:hover {
+            border-color: var(--accent);
+            background: var(--bg-hover);
+        }
+        
+        .btn-choice-primary {
+            background: var(--accent);
+            color: var(--bg);
+            border-color: var(--accent);
+        }
+        
+        .btn-choice-primary:hover {
+            background: var(--accent-hover);
+        }
+        
+        .form-intro {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1));
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.85rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .aip-form .form-section {
+            margin-bottom: 1.5rem;
+        }
+        
+        .aip-form .form-section h4 {
+            font-size: 0.9rem;
+            color: var(--accent);
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .aip-form .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        
+        .aip-form .form-group {
+            margin-bottom: 0.75rem;
+        }
+        
+        .aip-form label {
+            display: block;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+        }
+        
+        .aip-form input,
+        .aip-form select,
+        .aip-form textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+        
+        .aip-form input:focus,
+        .aip-form select:focus,
+        .aip-form textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        
+        .modal-buttons {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        
+        .btn-secondary {
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            cursor: pointer;
+        }
+        
+        .btn-primary {
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            border: none;
+            background: var(--accent);
+            color: var(--bg);
+            cursor: pointer;
+            font-weight: 500;
+        }
+        
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+        
+        .email-template-container {
+            margin-top: 1rem;
+        }
+        
+        .email-template-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .btn-copy {
+            padding: 0.4rem 0.75rem;
+            border-radius: 4px;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--accent);
+            font-size: 0.8rem;
+            cursor: pointer;
+        }
+        
+        .btn-copy:hover {
+            background: var(--accent);
+            color: var(--bg);
+        }
+        
+        .email-template {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        #validation-result {
+            margin-bottom: 1rem;
+        }
+        
+        .validation-success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 1rem;
+            color: var(--accent);
+        }
+        
+        .validation-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid var(--accent-warn);
+            border-radius: 8px;
+            padding: 1rem;
+        }
+        
+        .validation-warning .warning-title {
+            color: var(--accent-warn);
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .validation-warning .warning-list {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+        
+        .validation-warning .alternatives {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+        }
+        
+        @media (max-width: 600px) {
+            .aip-form .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .modal-content {
+                width: 95%;
+                max-height: 90vh;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1081,6 +1389,171 @@
                 </div>
             </div>
         </main>
+    </div>
+    
+    <!-- CONTACT LENDER MODAL -->
+    <div class="modal-overlay" id="contact-modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="contact-modal-title">Contact Lender</h3>
+                <button class="modal-close" onclick="closeContactModal()">×</button>
+            </div>
+            
+            <!-- Step 1: Contact Choice -->
+            <div id="contact-step-1" class="modal-step">
+                <div class="contact-details-box">
+                    <div class="contact-name" id="contact-bdm-name"></div>
+                    <div class="contact-info">
+                        <span id="contact-email"></span>
+                        <span id="contact-phone"></span>
+                    </div>
+                </div>
+                
+                <p class="modal-question">How would you like to proceed?</p>
+                
+                <div class="contact-choice-buttons">
+                    <button class="btn-choice" onclick="contactOwnWay()">
+                        📞 I'll contact them my own way
+                    </button>
+                    <button class="btn-choice btn-choice-primary" onclick="showAIPForm()">
+                        ✉️ Help me create a deal presentation
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Step 2: AIP Form -->
+            <div id="contact-step-2" class="modal-step" style="display: none;">
+                <p class="form-intro">
+                    💡 The more information you provide, the more likely the lender can give you a quick and confident response. All fields are optional.
+                </p>
+                
+                <div class="aip-form">
+                    <div class="form-section">
+                        <h4>Borrower</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Borrower Name</label>
+                                <input type="text" id="aip-borrower-name" placeholder="e.g. John Smith or ABC Properties Ltd">
+                            </div>
+                            <div class="form-group">
+                                <label>Borrower Type</label>
+                                <select id="aip-borrower-type">
+                                    <option value="">-- Select --</option>
+                                    <option value="individual">Individual</option>
+                                    <option value="company">Limited Company</option>
+                                    <option value="partnership">Partnership</option>
+                                    <option value="trust">Trust</option>
+                                    <option value="sipp">SIPP/SSAS</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Homeowner?</label>
+                                <select id="aip-homeowner">
+                                    <option value="">-- Select --</option>
+                                    <option value="yes">Yes</option>
+                                    <option value="no">No</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Assets & Liabilities Position</label>
+                                <input type="text" id="aip-al-position" placeholder="e.g. Strong, £500k+ net assets">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h4>Property</h4>
+                        <div class="form-group">
+                            <label>Property Address (main security)</label>
+                            <input type="text" id="aip-property-address" placeholder="e.g. 123 High Street, Bristol BS1 1AA">
+                        </div>
+                        <div class="form-group">
+                            <label>Additional Security Address (if applicable)</label>
+                            <input type="text" id="aip-additional-security" placeholder="e.g. 45 Oak Road, Bath BA1 2BB">
+                        </div>
+                    </div>
+                    
+                    <div class="form-section refurb-section" id="aip-refurb-section" style="display: none;">
+                        <h4>Refurbishment Details</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Developer Experience</label>
+                                <select id="aip-experience">
+                                    <option value="">-- Select --</option>
+                                    <option value="none">None - First time</option>
+                                    <option value="1-2">1-2 projects</option>
+                                    <option value="3-5">3-5 projects</option>
+                                    <option value="5+">5+ projects</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>GDV Estimate</label>
+                                <input type="text" id="aip-gdv" placeholder="e.g. £450k-£500k">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Rough Schedule of Works</label>
+                            <textarea id="aip-works-schedule" rows="2" placeholder="e.g. New kitchen & bathroom, redecorate throughout, new flooring. Approx 8-10 weeks."></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h4>Exit Strategy</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Exit Strategy</label>
+                                <select id="aip-exit-strategy">
+                                    <option value="">-- Select --</option>
+                                    <option value="sale">Sale</option>
+                                    <option value="refinance-btl">Refinance to BTL</option>
+                                    <option value="refinance-resi">Refinance to Residential</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Expected Timeframe</label>
+                                <input type="text" id="aip-timeframe" placeholder="e.g. 6-9 months">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-section">
+                        <h4>Other</h4>
+                        <div class="form-group">
+                            <label>Urgency / Deadline</label>
+                            <input type="text" id="aip-urgency" placeholder="e.g. Auction - 28 days, or No rush">
+                        </div>
+                        <div class="form-group">
+                            <label>Additional Notes</label>
+                            <textarea id="aip-notes" rows="2" placeholder="Any other relevant information..."></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-buttons">
+                    <button class="btn-secondary" onclick="showContactStep1()">← Back</button>
+                    <button class="btn-primary" onclick="generateDealPresentation()">Generate Deal Presentation →</button>
+                </div>
+            </div>
+            
+            <!-- Step 3: Result -->
+            <div id="contact-step-3" class="modal-step" style="display: none;">
+                <div id="validation-result"></div>
+                <div class="email-template-container">
+                    <div class="email-template-header">
+                        <span>📧 Deal Presentation Email</span>
+                        <button class="btn-copy" onclick="copyEmailTemplate()">📋 Copy to Clipboard</button>
+                    </div>
+                    <pre class="email-template" id="email-template"></pre>
+                </div>
+                <div class="modal-buttons">
+                    <button class="btn-secondary" onclick="showAIPForm()">← Edit Details</button>
+                    <button class="btn-primary" onclick="closeContactModal()">Done</button>
+                </div>
+            </div>
+        </div>
     </div>
     
     <script src="script.js"></script>
